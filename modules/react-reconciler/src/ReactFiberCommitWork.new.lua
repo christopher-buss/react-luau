@@ -106,6 +106,8 @@ local enableProfilerCommitHooks = ReactFeatureFlags.enableProfilerCommitHooks
 local enableSuspenseCallback = ReactFeatureFlags.enableSuspenseCallback
 -- local enableScopeAPI = ReactFeatureFlags.enableScopeAPI
 local enableDoubleInvokingEffects = ReactFeatureFlags.enableDoubleInvokingEffects
+local enableSuspenseLayoutEffectSemantics =
+	ReactFeatureFlags.enableSuspenseLayoutEffectSemantics
 local enableNewTreeCleanupPath = ReactFeatureFlags.enableNewTreeCleanupPath
 local ReactWorkTags = require(script.Parent.ReactWorkTags)
 local FunctionComponent = ReactWorkTags.FunctionComponent
@@ -159,7 +161,10 @@ local recordPassiveEffectDuration = ReactProfilerTimer.recordPassiveEffectDurati
 local recordLayoutEffectDuration = ReactProfilerTimer.recordLayoutEffectDuration
 local startPassiveEffectTimer = ReactProfilerTimer.startPassiveEffectTimer
 local getCommitTime = ReactProfilerTimer.getCommitTime
-local ProfileMode = require(script.Parent.ReactTypeOfMode).ProfileMode
+local ReactTypeOfMode = require(script.Parent.ReactTypeOfMode)
+local NoMode = ReactTypeOfMode.NoMode
+local ConcurrentMode = ReactTypeOfMode.ConcurrentMode
+local ProfileMode = ReactTypeOfMode.ProfileMode
 local commitUpdateQueue = ReactUpdateQueueModule.commitUpdateQueue
 local getPublicInstance = ReactFiberHostConfig.getPublicInstance
 local supportsMutation = ReactFiberHostConfig.supportsMutation
@@ -246,7 +251,7 @@ end
 type Set<T> = { [T]: boolean }
 
 -- deviation: pre-declare functions when necessary
-local isHostParent, getHostSibling, insertOrAppendPlacementNode, insertOrAppendPlacementNodeIntoContainer, commitLayoutEffectsForHostRoot, commitLayoutEffectsForHostComponent, commitLayoutEffectsForClassComponent, unmountHostComponents, commitNestedUnmounts, commitUnmount
+local isHostParent, getHostSibling, insertOrAppendPlacementNode, insertOrAppendPlacementNodeIntoContainer, commitLayoutEffectsForHostRoot, commitLayoutEffectsForHostComponent, commitLayoutEffectsForClassComponent, disappearLayoutEffects, reappearLayoutEffects, unmountHostComponents, commitNestedUnmounts, commitUnmount
 
 -- Used to avoid traversing the return path to find the nearest Profiler ancestor during commit.
 local nearestProfilerOnStack: Fiber | nil = nil
@@ -541,6 +546,30 @@ local function recursivelyCommitLayoutEffects(
 	end
 	local flags = finishedWork.flags
 	local tag = finishedWork.tag
+	if
+		enableSuspenseLayoutEffectSemantics
+		and tag == OffscreenComponent
+		and bit32.band(finishedWork.mode, ConcurrentMode) ~= NoMode
+	then
+		local isHidden = finishedWork.memoizedState ~= nil
+		if isHidden then
+			return
+		end
+
+		local current = finishedWork.alternate
+		local wasHidden = current ~= nil and current.memoizedState ~= nil
+		if wasHidden then
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/ReactFiberCommitWork.new.js#L2231-L2257
+			-- ROBLOX DEVIATION: React-Luau retains the recursive React 17 commit
+			-- traversal, so reappearing children are visited from this boundary.
+			local child = finishedWork.child
+			while child ~= nil do
+				reappearLayoutEffects(child)
+				child = child.sibling
+			end
+			return
+		end
+	end
 	if tag == Profiler then
 		local prevProfilerOnStack = nil
 		if enableProfilerTimer and enableProfilerCommitHooks then
@@ -1069,24 +1098,32 @@ function commitLayoutEffectsForHostComponent(finishedWork: Fiber)
 end
 
 local function hideOrUnhideAllChildren(finishedWork, isHidden)
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/ReactFiberCommitWork.new.js#L1118-L1182
+	local hostSubtreeRoot: Fiber? = nil
+
 	if supportsMutation then
 		-- We only have the top Fiber that was inserted but we need to recurse down its
 		-- children to find all the terminal nodes.
 		local node: Fiber = finishedWork
 		while true do
 			if node.tag == HostComponent then
-				local instance = node.stateNode
-				if isHidden then
-					hideInstance(instance)
-				else
-					unhideInstance(node.stateNode, node.memoizedProps)
+				if hostSubtreeRoot == nil then
+					hostSubtreeRoot = node
+					local instance = node.stateNode
+					if isHidden then
+						hideInstance(instance)
+					else
+						unhideInstance(node.stateNode, node.memoizedProps)
+					end
 				end
 			elseif node.tag == HostText then
-				local instance = node.stateNode
-				if isHidden then
-					hideTextInstance(instance)
-				else
-					unhideTextInstance(instance, node.memoizedProps)
+				if hostSubtreeRoot == nil then
+					local instance = node.stateNode
+					if isHidden then
+						hideTextInstance(instance)
+					else
+						unhideTextInstance(instance, node.memoizedProps)
+					end
 				end
 			elseif
 				(node.tag == OffscreenComponent or node.tag == LegacyHiddenComponent)
@@ -1108,7 +1145,13 @@ local function hideOrUnhideAllChildren(finishedWork, isHidden)
 				if node.return_ == nil or node.return_ == finishedWork then
 					return
 				end
+				if hostSubtreeRoot == node then
+					hostSubtreeRoot = nil
+				end
 				node = node.return_ :: Fiber -- ROBLOX TODO: Luau narrowing doesn't understand this loop until nil pattern
+			end
+			if hostSubtreeRoot == node then
+				hostSubtreeRoot = nil
 			end
 			-- ROBLOX FIXME: cast to any to silence analyze
 			(node.sibling :: Fiber).return_ = node.return_
@@ -1165,6 +1208,103 @@ function commitDetachRef(current: Fiber)
 		else
 			currentRef.current = nil
 		end
+	end
+end
+
+local function safelyCallComponentDidMount(
+	current: Fiber,
+	nearestMountedAncestor: Fiber?,
+	instance: any
+): ()
+	local ok, error_ = xpcall(function()
+		-- ROBLOX DEVIATION: Luau class lifecycle methods receive self with `:`.
+		instance:componentDidMount()
+	end, describeError)
+	if not ok then
+		captureCommitPhaseError(current, nearestMountedAncestor, error_)
+	end
+end
+
+local function safelyAttachRef(current: Fiber, nearestMountedAncestor: Fiber?): ()
+	local ok, error_ = xpcall(commitAttachRef, describeError, current)
+	if not ok then
+		captureCommitPhaseError(current, nearestMountedAncestor, error_)
+	end
+end
+
+local function safelyCallCommitHookLayoutEffectListMount(
+	current: Fiber,
+	nearestMountedAncestor: Fiber?
+): ()
+	local ok, error_ =
+		xpcall(commitHookEffectListMount, describeError, HookLayout, current)
+	if not ok then
+		captureCommitPhaseError(current, nearestMountedAncestor, error_)
+	end
+end
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/ReactFiberCommitWork.new.js#L2306-L2377
+-- ROBLOX DEVIATION: React-Luau's commit phase is recursive, so the upstream
+-- iterative disappear traversal is represented by an equivalent recursive walk.
+function disappearLayoutEffects(subtreeRoot: Fiber): ()
+	local tag = subtreeRoot.tag
+	if
+		tag == FunctionComponent
+		or tag == ForwardRef
+		or tag == MemoComponent
+		or tag == SimpleMemoComponent
+		or tag == Block
+	then
+		commitHookEffectListUnmount(HookLayout, subtreeRoot, subtreeRoot.return_)
+	elseif tag == ClassComponent then
+		safelyDetachRef(subtreeRoot, subtreeRoot.return_ :: Fiber)
+		local instance = subtreeRoot.stateNode
+		if typeof(instance.componentWillUnmount) == "function" then
+			safelyCallComponentWillUnmount(subtreeRoot, instance, subtreeRoot.return_)
+		end
+	elseif tag == HostComponent then
+		safelyDetachRef(subtreeRoot, subtreeRoot.return_ :: Fiber)
+	elseif tag == OffscreenComponent and subtreeRoot.memoizedState ~= nil then
+		return
+	end
+
+	local child = subtreeRoot.child
+	while child ~= nil do
+		disappearLayoutEffects(child)
+		child = child.sibling
+	end
+end
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/ReactFiberCommitWork.new.js#L2379-L2435
+-- ROBLOX DEVIATION: React-Luau's commit phase is recursive, so the upstream
+-- iterative reappear traversal is represented by an equivalent recursive walk.
+function reappearLayoutEffects(subtreeRoot: Fiber): ()
+	if subtreeRoot.tag == OffscreenComponent and subtreeRoot.memoizedState ~= nil then
+		return
+	end
+
+	local child = subtreeRoot.child
+	while child ~= nil do
+		reappearLayoutEffects(child)
+		child = child.sibling
+	end
+
+	local tag = subtreeRoot.tag
+	if
+		tag == FunctionComponent
+		or tag == ForwardRef
+		or tag == SimpleMemoComponent
+		or tag == Block
+	then
+		safelyCallCommitHookLayoutEffectListMount(subtreeRoot, subtreeRoot.return_)
+	elseif tag == ClassComponent then
+		local instance = subtreeRoot.stateNode
+		if typeof(instance.componentDidMount) == "function" then
+			safelyCallComponentDidMount(subtreeRoot, subtreeRoot.return_, instance)
+		end
+		safelyAttachRef(subtreeRoot, subtreeRoot.return_)
+	elseif tag == HostComponent then
+		safelyAttachRef(subtreeRoot, subtreeRoot.return_)
 	end
 end
 
@@ -1992,6 +2132,25 @@ local function commitWork(current: Fiber | nil, finishedWork: Fiber)
 	then
 		local newState: OffscreenState | nil = finishedWork.memoizedState
 		local isHidden = newState ~= nil
+		local wasHidden = current ~= nil and current.memoizedState ~= nil
+
+		if
+			enableSuspenseLayoutEffectSemantics
+			and finishedWork.tag == OffscreenComponent
+			and isHidden
+			and not wasHidden
+			and bit32.band(finishedWork.mode, ConcurrentMode) ~= NoMode
+		then
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/ReactFiberCommitWork.new.js#L2130-L2154
+			-- ROBLOX DEVIATION: React-Luau calls commitWork from its recursive
+			-- mutation traversal, so disappearing effects start here.
+			local child = finishedWork.child
+			while child ~= nil do
+				disappearLayoutEffects(child)
+				child = child.sibling
+			end
+		end
+
 		hideOrUnhideAllChildren(finishedWork, isHidden)
 		return
 	end
@@ -2007,20 +2166,6 @@ function commitSuspenseComponent(finishedWork: Fiber)
 
 	if newState ~= nil then
 		markCommitTimeOfFallback()
-
-		if supportsMutation then
-			-- Hide the Offscreen component that contains the primary children. TODO:
-			-- Ideally, this effect would have been scheduled on the Offscreen fiber
-			-- itself. That's how unhiding works: the Offscreen component schedules an
-			-- effect on itself. However, in this case, the component didn't complete,
-			-- so the fiber was never added to the effect list in the normal path. We
-			-- could have appended it to the effect list in the Suspense component's
-			-- second pass, but doing it this way is less complicated. This would be
-			-- simpler if we got rid of the effect list and traversed the tree, like
-			-- we're planning to do.
-			local primaryChildParent: Fiber = finishedWork.child :: any
-			hideOrUnhideAllChildren(primaryChildParent, true)
-		end
 	end
 
 	if enableSuspenseCallback and newState ~= nil then
