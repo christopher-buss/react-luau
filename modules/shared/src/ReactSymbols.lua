@@ -42,6 +42,10 @@ exports.REACT_DEBUG_TRACING_MODE_TYPE = 0xeae1
 exports.REACT_OFFSCREEN_TYPE = 0xeae2
 exports.REACT_LEGACY_HIDDEN_TYPE = 0xeae3
 exports.REACT_BINDING_TYPE = 0xeae4
+-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/shared/ReactSymbols.js#L35
+-- ROBLOX DEVIATION: React-Luau uses unique numeric element tags and 0xeae4 is
+-- already occupied by its renderer-specific binding type.
+exports.REACT_ACTIVITY_TYPE = 0xeae5
 
 -- ROBLOX TODO: Use Symbol again once jest-mock knows to exclude the LuauPolyfill module from being reset
 -- deviation: In Lua, Symbol will be a callable table, not a function
@@ -67,6 +71,7 @@ exports.REACT_BINDING_TYPE = 0xeae4
 --   exports.REACT_DEBUG_TRACING_MODE_TYPE = symbolFor('react.debug_trace_mode')
 --   exports.REACT_OFFSCREEN_TYPE = symbolFor('react.offscreen')
 --   exports.REACT_LEGACY_HIDDEN_TYPE = symbolFor('react.legacy_hidden')
+--   exports.REACT_ACTIVITY_TYPE = symbolFor('react.activity')
 -- end
 
 -- deviation: short circuit for now

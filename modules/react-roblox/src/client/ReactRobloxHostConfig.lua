@@ -44,6 +44,12 @@ type Props = ReactRobloxHostTypes.Props
 type Type = ReactRobloxHostTypes.Type
 type HostContext = ReactRobloxHostTypes.HostContext
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCommitWork.js#L1184-L1262
+-- ROBLOX DEVIATION: Roblox Instances have no universal visibility property.
+-- Detaching only the host subtree root preserves every Instance class and its
+-- original parent while the Activity is hidden.
+local hiddenInstanceParents: { [Instance]: Instance } = setmetatable({}, { __mode = "k" }) :: any
+
 -- local type {ReactScopeInstance} = require(Packages.shared/ReactTypes'
 -- local type {ReactDOMFundamentalComponentInstance} = require(Packages.../shared/ReactDOMTypes'
 
@@ -642,6 +648,7 @@ end
 -- end
 
 exports.removeChild = function(_parentInstance: Instance, child: Instance)
+	hiddenInstanceParents[child] = nil
 	recursivelyUncacheFiberNode(child)
 	-- ROBLOX deviation: The roblox renderer tracks bindings and event managers
 	-- for instances, so make sure we clean those up when we remove the instance
@@ -722,7 +729,17 @@ exports.clearSuspenseBoundaryFromContainer = function(
 end
 
 exports.hideInstance = function(instance: Instance)
-	unimplemented("hideInstance")
+	if hiddenInstanceParents[instance] ~= nil then
+		return
+	end
+
+	local parent = instance.Parent
+	if parent == nil then
+		return
+	end
+
+	hiddenInstanceParents[instance] = parent
+	instance.Parent = nil
 	-- -- TODO: Does this work for all element types? What about MathML? Should we
 	-- -- pass host context to this method?
 	-- instance = ((instance: any): HTMLElement)
@@ -740,8 +757,14 @@ exports.hideTextInstance = function(textInstance: TextInstance): ()
 	--   textInstance.nodeValue = ''
 end
 
-exports.unhideInstance = function(instance: Instance, props: Props)
-	unimplemented("unhideInstance")
+exports.unhideInstance = function(instance: Instance, _props: Props)
+	local parent = hiddenInstanceParents[instance]
+	if parent == nil then
+		return
+	end
+
+	hiddenInstanceParents[instance] = nil
+	instance.Parent = parent
 	-- instance = ((instance: any): HTMLElement)
 	-- local styleProp = props[STYLE]
 	-- local display =

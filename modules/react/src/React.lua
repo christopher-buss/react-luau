@@ -140,6 +140,8 @@ return {
 	-- ROBLOX TODO: useDeferredValue,
 	-- ROBLOX TODO: REACT_SUSPENSE_LIST_TYPE as SuspenseList,
 	unstable_LegacyHidden = ReactSymbols.REACT_LEGACY_HIDDEN_TYPE,
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react/src/ReactClient.js#L119
+	Activity = ReactSymbols.REACT_ACTIVITY_TYPE,
 	-- enableBlocksAPI
 	-- ROBLOX TODO: block,
 	-- enableFundamentalAPI
