@@ -88,6 +88,7 @@ type FunctionComponentUpdateQueue = {
 
 local ReactTypes = require(Packages.Shared)
 type Wakeable = ReactTypes.Wakeable
+local REACT_ACTIVITY_TYPE = ReactTypes.ReactSymbols.REACT_ACTIVITY_TYPE
 
 type ReactPriorityLevel = ReactInternalTypes.ReactPriorityLevel
 local ReactFiberOffscreenComponent = require(script.Parent.ReactFiberOffscreenComponent)
@@ -2152,6 +2153,12 @@ local function commitWork(current: Fiber | nil, finishedWork: Fiber)
 		end
 
 		hideOrUnhideAllChildren(finishedWork, isHidden)
+		if finishedWork.elementType == REACT_ACTIVITY_TYPE then
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCommitWork.js#L2514-L2516
+			-- ROBLOX DEVIATION: Activity uses the existing Suspense retry cache
+			-- because the prototype has no transition or marker queues.
+			attachSuspenseRetryListeners(finishedWork)
+		end
 		return
 	end
 	invariant(
@@ -2273,6 +2280,48 @@ end
 
 local function commitPassiveUnmount(finishedWork: Fiber): ()
 	if
+		finishedWork.tag == OffscreenComponent
+		and finishedWork.elementType == REACT_ACTIVITY_TYPE
+	then
+		local current = finishedWork.alternate
+		local isHidden = finishedWork.memoizedState ~= nil
+		local wasHidden = current ~= nil and current.memoizedState ~= nil
+		if current ~= nil and isHidden and not wasHidden then
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCommitWork.js#L4938-L4973
+			-- ROBLOX DEVIATION: The prototype traverses only client hook Fibers and
+			-- identifies Activity using its public element type.
+			local function disconnectPassiveEffects(fiber: Fiber): ()
+				if
+					fiber.tag == OffscreenComponent
+					and fiber.elementType == REACT_ACTIVITY_TYPE
+					and fiber.memoizedState ~= nil
+				then
+					return
+				end
+
+				if
+					fiber.tag == FunctionComponent
+					or fiber.tag == ForwardRef
+					or fiber.tag == SimpleMemoComponent
+					or fiber.tag == Block
+				then
+					commitHookEffectListUnmount(HookPassive, fiber, fiber.return_)
+				end
+
+				local child = fiber.child
+				while child ~= nil do
+					disconnectPassiveEffects(child)
+					child = child.sibling
+				end
+			end
+
+			local child = finishedWork.child
+			while child ~= nil do
+				disconnectPassiveEffects(child)
+				child = child.sibling
+			end
+		end
+	elseif
 		finishedWork.tag == FunctionComponent
 		or finishedWork.tag == ForwardRef
 		or finishedWork.tag == SimpleMemoComponent
@@ -2326,6 +2375,48 @@ end
 
 local function commitPassiveMount(finishedRoot: FiberRoot, finishedWork: Fiber): ()
 	if
+		finishedWork.tag == OffscreenComponent
+		and finishedWork.elementType == REACT_ACTIVITY_TYPE
+	then
+		local current = finishedWork.alternate
+		local isHidden = finishedWork.memoizedState ~= nil
+		local wasHidden = current ~= nil and current.memoizedState ~= nil
+		if not isHidden and wasHidden then
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCommitWork.js#L4158-L4321
+			-- ROBLOX DEVIATION: Atomic effects, cache pools, tracing, profiling,
+			-- resources, and View Transitions are outside this client prototype.
+			local function reconnectPassiveEffects(fiber: Fiber): ()
+				if
+					fiber.tag == OffscreenComponent
+					and fiber.elementType == REACT_ACTIVITY_TYPE
+					and fiber.memoizedState ~= nil
+				then
+					return
+				end
+
+				local child = fiber.child
+				while child ~= nil do
+					reconnectPassiveEffects(child)
+					child = child.sibling
+				end
+
+				if
+					fiber.tag == FunctionComponent
+					or fiber.tag == ForwardRef
+					or fiber.tag == SimpleMemoComponent
+					or fiber.tag == Block
+				then
+					commitHookEffectListMount(HookPassive, fiber)
+				end
+			end
+
+			local child = finishedWork.child
+			while child ~= nil do
+				reconnectPassiveEffects(child)
+				child = child.sibling
+			end
+		end
+	elseif
 		finishedWork.tag == FunctionComponent
 		or finishedWork.tag == ForwardRef
 		or finishedWork.tag == SimpleMemoComponent
