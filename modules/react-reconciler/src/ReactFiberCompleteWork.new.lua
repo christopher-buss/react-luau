@@ -85,6 +85,7 @@ local ProfileMode = ReactTypeOfMode.ProfileMode
 
 local ReactFiberFlags = require(script.Parent.ReactFiberFlags)
 local Ref = ReactFiberFlags.Ref
+local Placement = ReactFiberFlags.Placement
 local Update = ReactFiberFlags.Update
 local Callback = ReactFiberFlags.Callback
 local Passive = ReactFiberFlags.Passive
@@ -1178,6 +1179,14 @@ local function completeWork(
 		end
 
 		if nextDidTimeout and not prevDidTimeout then
+			if supportsMutation then
+				-- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/ReactFiberCompleteWork.new.js#L1175-L1190
+				-- ROBLOX DEVIATION: React-Luau uses Update for the Offscreen
+				-- visibility and layout lifecycle mutation effect.
+				local offscreenFiber = workInProgress.child :: Fiber
+				offscreenFiber.flags = bit32.bor(offscreenFiber.flags, Update)
+			end
+
 			-- If this subtreee is running in blocking mode we can suspend,
 			-- otherwise we won't suspend.
 			-- TODO: This will still suspend a synchronous tree if anything
@@ -1583,22 +1592,37 @@ local function completeWork(
 			local prevIsHidden = prevState ~= nil
 			if
 				prevIsHidden ~= nextIsHidden
-				and newProps.mode ~= "unstable-defer-without-hiding"
+				and workInProgress.tag == OffscreenComponent
 			then
 				workInProgress.flags = bit32.bor(workInProgress.flags, Update)
 			end
 		end
 
 		-- Don't bubble properties for hidden children.
+		local isRenderingOffscreen =
+			includesSomeLane(ReactFiberWorkLoop.subtreeRenderLanes, OffscreenLane :: Lane)
 		if
 			not nextIsHidden
-			or includesSomeLane(
-				ReactFiberWorkLoop.subtreeRenderLanes,
-				OffscreenLane :: Lane
-			)
+			or isRenderingOffscreen
 			or bit32.band(workInProgress.mode, ConcurrentMode) == NoMode
 		then
 			bubbleProperties(workInProgress)
+			if
+				nextIsHidden
+				and isRenderingOffscreen
+				and supportsMutation
+				and workInProgress.tag == OffscreenComponent
+				and bit32.band(
+						workInProgress.subtreeFlags,
+						bit32.bor(Placement, Update)
+					)
+					~= NoFlags
+			then
+				-- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/ReactFiberCompleteWork.new.js#L1255-L1274
+				-- ROBLOX DEVIATION: React-Luau's React 17 flag layout uses Update for
+				-- Offscreen visibility work instead of React 18's Visibility flag.
+				workInProgress.flags = bit32.bor(workInProgress.flags, Update)
+			end
 		end
 
 		return nil

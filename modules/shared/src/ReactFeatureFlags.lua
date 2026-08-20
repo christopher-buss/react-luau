@@ -155,4 +155,7 @@ exports.enableEagerRootListeners = false
 
 exports.enableDoubleInvokingEffects = false
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/shared/ReactFeatureFlags.js#L207-L216
+exports.enableSuspenseLayoutEffectSemantics = true
+
 return exports
