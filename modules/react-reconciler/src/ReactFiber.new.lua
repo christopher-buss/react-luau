@@ -880,7 +880,7 @@ function createFiberFromActivity(
 	key: string?
 ): Fiber
 	-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiber.js#L834-L843
-	-- ROBLOX DEVIATION: This client-only prototype compiles Activity directly
+	-- ROBLOX DEVIATION: This client-only port compiles Activity directly
 	-- to the existing Offscreen Fiber. Upstream's extra Activity wrapper owns
 	-- dehydrated-boundary behavior, which ReactRoblox does not support.
 	return createFiber(
