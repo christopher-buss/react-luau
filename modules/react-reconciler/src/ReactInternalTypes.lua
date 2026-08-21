@@ -71,6 +71,7 @@ export type Update<State> = {
 
 export type SharedQueue<State> = {
 	pending: Update<State>?,
+	hiddenEffects: Array<Update<State>>?,
 }
 
 export type UpdateQueue<State> = {
@@ -127,7 +128,6 @@ export type ContextDependency<T> = {
 }
 
 export type Dependencies = {
-	lanes: Lanes,
 	firstContext: ContextDependency<any> | nil,
 	-- ROBLOX deviation START: don't allow for extension unless we have to
 	-- ...
@@ -227,8 +227,6 @@ export type Fiber = {
 	-- this fiber.
 	firstEffect: Fiber?,
 	lastEffect: Fiber?,
-
-	lanes: Lanes,
 	childLanes: Lanes,
 
 	-- This is a pooled version of a Fiber. Every fiber that gets updated will
