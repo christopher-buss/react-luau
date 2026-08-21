@@ -692,6 +692,21 @@ local function updateOffscreenComponent(
 		nextProps.mode == "hidden"
 		or nextProps.mode == "unstable-defer-without-hiding"
 	then
+		if
+			workInProgress.elementType == ReactSymbols.REACT_ACTIVITY_TYPE
+			and bit32.band(workInProgress.flags, DidCapture) ~= NoFlags
+		then
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberBeginWork.js#L647-L680
+			-- ROBLOX DEVIATION: The client prototype restores the last committed
+			-- children without importing hidden context, caches, or hydration.
+			workInProgress.flags =
+				bit32.band(workInProgress.flags, bit32.bnot(DidCapture))
+			workInProgress.child = if current ~= nil then current.child else nil
+			workInProgress.flags = bit32.bor(workInProgress.flags, ReactFiberFlags.Update)
+			pushRenderLanes(workInProgress, renderLanes)
+			return nil
+		end
+
 		if bit32.band(workInProgress.mode, ConcurrentMode) == NoMode then
 			-- In legacy sync mode, don't defer the subtree. Render it now.
 			-- TODO: Figure out what we should do in Blocking mode.

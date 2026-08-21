@@ -25,6 +25,7 @@ local ReactWorkTags = require(script.Parent.ReactWorkTags)
 -- local {ReactFiberFlags.DidCapture, ReactFiberFlags.NoFlags, ReactFiberFlags.ShouldCapture} = require(script.Parent.ReactFiberFlags)
 local ReactFiberFlags = require(script.Parent.ReactFiberFlags)
 local ReactTypeOfMode = require(script.Parent.ReactTypeOfMode)
+local REACT_ACTIVITY_TYPE = require(Packages.Shared).ReactSymbols.REACT_ACTIVITY_TYPE
 
 local ReactFeatureFlags = require(Packages.Shared).ReactFeatureFlags
 local enableSuspenseServerRenderer = ReactFeatureFlags.enableSuspenseServerRenderer
@@ -145,6 +146,20 @@ local function unwindWork(workInProgress: Fiber, renderLanes: Lanes): Fiber?
 		or workInProgress.tag == ReactWorkTags.LegacyHiddenComponent
 	then
 		popRenderLanes(workInProgress)
+		local flags = workInProgress.flags
+		if
+			workInProgress.elementType == REACT_ACTIVITY_TYPE
+			and bit32.band(flags, ReactFiberFlags.ShouldCapture) ~= 0
+		then
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberUnwindWork.js#L194-L215
+			-- ROBLOX DEVIATION: The client prototype captures on the Activity
+			-- Offscreen Fiber rather than a hydration-capable Activity wrapper.
+			workInProgress.flags = bit32.bor(
+				bit32.band(flags, bit32.bnot(ReactFiberFlags.ShouldCapture)),
+				ReactFiberFlags.DidCapture
+			)
+			return workInProgress
+		end
 		return nil
 	else
 		return nil
