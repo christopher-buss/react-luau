@@ -2186,7 +2186,7 @@ local function commitWork(current: Fiber | nil, finishedWork: Fiber)
 		if finishedWork.elementType == REACT_ACTIVITY_TYPE then
 			-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCommitWork.js#L2514-L2516
 			-- ROBLOX DEVIATION: Activity uses the existing Suspense retry cache
-			-- because the prototype has no transition or marker queues.
+			-- because this port has no transition or marker queues.
 			attachSuspenseRetryListeners(finishedWork)
 		end
 		return
@@ -2318,7 +2318,7 @@ local function commitPassiveUnmount(finishedWork: Fiber): ()
 		local wasHidden = current ~= nil and current.memoizedState ~= nil
 		if current ~= nil and isHidden and not wasHidden then
 			-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCommitWork.js#L4938-L4973
-			-- ROBLOX DEVIATION: The prototype traverses only client hook Fibers and
+			-- ROBLOX DEVIATION: The client port traverses only hook Fibers and
 			-- identifies Activity using its public element type.
 			local function disconnectPassiveEffects(fiber: Fiber): ()
 				if
@@ -2414,7 +2414,7 @@ local function commitPassiveMount(finishedRoot: FiberRoot, finishedWork: Fiber):
 		if not isHidden and wasHidden then
 			-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCommitWork.js#L4158-L4321
 			-- ROBLOX DEVIATION: Atomic effects, cache pools, tracing, profiling,
-			-- resources, and View Transitions are outside this client prototype.
+			-- resources, and View Transitions are outside this client port.
 			local function reconnectPassiveEffects(fiber: Fiber): ()
 				if
 					fiber.tag == OffscreenComponent

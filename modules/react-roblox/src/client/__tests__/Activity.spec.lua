@@ -1,5 +1,5 @@
 -- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/__tests__/Activity-test.js
--- ROBLOX DEVIATION: This throwaway client prototype exercises the public
+-- ROBLOX DEVIATION: This client acceptance suite exercises the public
 -- ReactRoblox root instead of ReactNoop so host Instance hiding is observable.
 
 local Packages = script.Parent.Parent.Parent.Parent
@@ -18,7 +18,7 @@ local Scheduler
 local parent
 local root
 
-describe("Activity prototype", function()
+describe("Activity", function()
 	beforeEach(function()
 		jest.resetModules()
 		jest.useFakeTimers()
