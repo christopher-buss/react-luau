@@ -2815,6 +2815,20 @@ exports.flushPassiveEffects = function(): boolean
 	return false
 end
 
+local function shouldSkipActivityPassiveChildren(fiber: Fiber): boolean
+	if
+		fiber.tag ~= ReactWorkTags.OffscreenComponent
+		or fiber.elementType ~= ReactShared.ReactSymbols.REACT_ACTIVITY_TYPE
+	then
+		return false
+	end
+
+	local current = fiber.alternate
+	local isHidden = fiber.memoizedState ~= nil
+	local wasHidden = current ~= nil and current.memoizedState ~= nil
+	return isHidden or wasHidden
+end
+
 flushPassiveMountEffects = function(root, firstChild: Fiber): ()
 	local fiber = firstChild
 	while fiber ~= nil do
@@ -2832,7 +2846,11 @@ flushPassiveMountEffects = function(root, firstChild: Fiber): ()
 		local primarySubtreeFlags =
 			bit32.band(fiber.subtreeFlags, ReactFiberFlags.PassiveMask)
 
-		if fiber.child ~= nil and primarySubtreeFlags ~= ReactFiberFlags.NoFlags then
+		if
+			fiber.child ~= nil
+			and primarySubtreeFlags ~= ReactFiberFlags.NoFlags
+			and not shouldSkipActivityPassiveChildren(fiber)
+		then
 			flushPassiveMountEffects(root, fiber.child)
 		end
 
@@ -2929,7 +2947,7 @@ local function flushPassiveUnmountEffects(firstChild: Fiber): ()
 		end
 
 		local child = fiber.child
-		if child ~= nil then
+		if child ~= nil and not shouldSkipActivityPassiveChildren(fiber) then
 			-- If any children have passive effects then traverse the subtree.
 			-- Note that this requires checking subtreeFlags of the current Fiber,
 			-- rather than the subtreeFlags/effectsTag of the first child,

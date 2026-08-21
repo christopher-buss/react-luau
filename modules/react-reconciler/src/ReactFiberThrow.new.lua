@@ -309,6 +309,26 @@ function throwException(
 		local workInProgress = returnFiber
 		repeat
 			if
+				workInProgress.tag == ReactWorkTags.OffscreenComponent
+				and workInProgress.elementType == ReactTypes.ReactSymbols.REACT_ACTIVITY_TYPE
+				and workInProgress.pendingProps.mode == "hidden"
+				and bit32.band(workInProgress.mode, BlockingMode) ~= NoMode
+			then
+				-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberThrow.js#L488-L517
+				-- ROBLOX DEVIATION: React-Luau finds boundaries by walking return
+				-- Fibers, so the public Activity Offscreen is captured directly.
+				workInProgress.flags = bit32.bor(workInProgress.flags, ShouldCapture)
+				local wakeables: Set<Wakeable> | nil = workInProgress.updateQueue
+				if wakeables == nil then
+					workInProgress.updateQueue = {
+						[wakeable] = true,
+					}
+				else
+					wakeables[wakeable] = true
+				end
+				attachPingListener(root, wakeable, rootRenderLanes)
+				return
+			elseif
 				workInProgress.tag == SuspenseComponent
 				and shouldCaptureSuspense(workInProgress, hasInvisibleParentBoundary)
 			then
