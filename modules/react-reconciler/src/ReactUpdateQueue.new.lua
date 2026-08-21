@@ -211,6 +211,7 @@ local function initializeUpdateQueue<State>(fiber: Fiber): ()
 		shared = {
 			pending = nil,
 			lanes = NoLanes,
+			hiddenEffects = nil,
 		},
 		effects = nil,
 	}
@@ -759,5 +760,44 @@ local function commitUpdateQueue<State>(
 	end
 end
 exports.commitUpdateQueue = commitUpdateQueue
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/5e4e2dae0ba1836d26fa4e5edb4475d3b3e0a60c/packages/react-reconciler/src/ReactFiberClassUpdateQueue.new.js#L682-L739
+-- ROBLOX DEVIATION: This reconciler stores callbacks on pooled Update objects,
+-- so hidden updates retain those objects instead of copying callback functions.
+local function deferHiddenCallbacks<State>(updateQueue: UpdateQueue<State>): ()
+	local effects = updateQueue.effects
+	if effects == nil then
+		return
+	end
+
+	updateQueue.effects = nil
+	local hiddenEffects = updateQueue.shared.hiddenEffects
+	if hiddenEffects == nil then
+		updateQueue.shared.hiddenEffects = effects
+	else
+		for _, effect in effects do
+			table.insert(hiddenEffects, effect)
+		end
+	end
+end
+exports.deferHiddenCallbacks = deferHiddenCallbacks
+
+local function commitHiddenCallbacks<State>(
+	finishedWork: Fiber,
+	finishedQueue: UpdateQueue<State>,
+	instance: any
+): ()
+	local hiddenEffects = finishedQueue.shared.hiddenEffects
+	if hiddenEffects == nil then
+		return
+	end
+
+	finishedQueue.shared.hiddenEffects = nil
+	local visibleEffects = finishedQueue.effects
+	finishedQueue.effects = hiddenEffects
+	commitUpdateQueue(finishedWork, finishedQueue, instance)
+	finishedQueue.effects = visibleEffects
+end
+exports.commitHiddenCallbacks = commitHiddenCallbacks
 
 return exports
