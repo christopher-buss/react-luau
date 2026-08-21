@@ -152,7 +152,7 @@ local function unwindWork(workInProgress: Fiber, renderLanes: Lanes): Fiber?
 			and bit32.band(flags, ReactFiberFlags.ShouldCapture) ~= 0
 		then
 			-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberUnwindWork.js#L194-L215
-			-- ROBLOX DEVIATION: The client prototype captures on the Activity
+			-- ROBLOX DEVIATION: The client port captures on the Activity
 			-- Offscreen Fiber rather than a hydration-capable Activity wrapper.
 			workInProgress.flags = bit32.bor(
 				bit32.band(flags, bit32.bnot(ReactFiberFlags.ShouldCapture)),

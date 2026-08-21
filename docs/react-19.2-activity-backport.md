@@ -12,6 +12,8 @@ capability exclusions rather than reconstructed substitutes.
 - Source repository: `facebook/react`
 - Required React-Luau base: `9e6d492861d2473c95bf5046e3f26165c7caf410`
   (`React 18 Suspense effects`)
+- Required transitions base: `9626a5b0e4d1df6c20ed977dedb617107cc63a5a`
+  (`React 18 transitions`), merged by `423442eaef972602dd8ec752157a5fa55a458a5f`
 
 The public seam is `React.Activity` rendered through a concurrent public root.
 The standalone suites use ReactNoop for exact scheduler observations and
@@ -43,7 +45,7 @@ The shipped contract includes:
 - visible and hidden modes, including the visible default
 - preserved component state and host identity
 - hidden initial rendering and updates at Offscreen priority
-- atomic hidden-update classification and reveal anti-tearing
+- consistent hidden updates and reveal anti-tearing
 - layout and passive effect disconnect/reconnect ordering
 - deferred class callbacks and reappear lifecycle ordering
 - hidden Suspense capture, retry, and multiple-priority updates
@@ -74,10 +76,10 @@ remove any client Activity behavior that React-Luau can express.
 | `ReactFiberActivityComponent.js` | No target | Out of scope | The file contains dehydrated Activity state only. |
 | `ReactFiberBeginWork.js` Offscreen client path | `ReactFiberBeginWork.new.lua` | Adapted | Existing React 17 Offscreen base lanes are retained; cache and tracing state are absent. |
 | `ReactFiberOffscreenComponent.js` instance visibility | `ReactFiberOffscreenComponent.lua` and `ReactFiber.new.lua` | Adapted | The instance stores only client visibility and retry state needed by the available renderer. |
-| `ReactFiberConcurrentUpdates.js` hidden classification | `ReactFiberWorkLoop.new.lua`, hook and class enqueue paths | Adapted | React-Luau's older reconciler has no split concurrent-update module, so equivalent atomic classification stays in its existing scheduling seam. |
-| `ReactFiberHooks.js` hidden update lane stripping | `ReactFiberHooks.new.lua` | Direct | Hidden updates disregard added base lanes until their outer lane commits. |
+| `ReactFiberConcurrentUpdates.js` hidden classification | Existing scheduling seam | Base behavior | React-Luau's older reconciler does not have interleaved concurrent queues; the exact hidden concurrent-event and anti-tearing tests pass without a separate atomic classification layer. |
+| `ReactFiberHooks.js` hidden update lane stripping | Existing hook lanes | Base behavior | The older lane model preserves the same externally observable ordering without React 19's `OffscreenLane` marker bit. |
 | `ReactFiberClassUpdateQueue.js` hidden lanes and callbacks | `ReactUpdateQueue.new.lua` | Adapted | React-Luau's class queue stores update objects rather than separate callback arrays. |
-| `ReactFiberLane.js`, `ReactFiberRoot.js` hidden update map | `ReactFiberLane.lua`, `ReactFiberRoot.new.lua`, `ReactInternalTypes.lua` | Adapted | The existing 31-bit lane layout and zero-indexed lane maps are preserved. |
+| `ReactFiberLane.js`, `ReactFiberRoot.js` hidden update map | Existing 31-bit lane model | Base behavior | A root `hiddenUpdates` map is unnecessary in the older reconciler because it has no interleaved queue window; exact client tests are the contract. |
 | `ReactFiberHiddenContext.js` base lanes | Existing Offscreen state and render-lane stack | Adapted | Only the lane behavior exercised by the client suites is ported; cache context is absent. |
 | `ReactFiberCompleteWork.js` visibility scheduling | `ReactFiberCompleteWork.new.lua` | Adapted | Existing React-Luau flags remain numerically stable. |
 | `ReactFiberCommitWork.js` layout, passive, class, and host traversals | `ReactFiberCommitWork.new.lua` | Adapted | Profiler, cache, tracing, resource, and View Transition cases are excluded. |
@@ -107,7 +109,7 @@ after each test has run red and green.
 | `does not toggle effects for LegacyHidden component` | Direct | Preserve the comparison. |
 | `hides new insertions into an already hidden tree` | Direct | None. |
 | `hides updated nodes inside an already hidden tree` | Direct | None. |
-| `revealing a hidden tree at high priority does not cause tearing` | Direct | Requires root hidden-update bookkeeping. |
+| `revealing a hidden tree at high priority does not cause tearing` | Direct | The older lane model satisfies the assertion without React 19's root hidden-update map. |
 | `regression: Activity instance is sometimes null during setState` | Adapted | The direct Offscreen client instance replaces the hydration wrapper instance. |
 | `class component setState callbacks do not fire until tree is visible` | Direct | None. |
 | `does not call componentDidUpdate when reappearing a hidden class component` | Direct | None. |

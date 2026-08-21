@@ -129,10 +129,10 @@ export type ReactPortal = {
 export type RefObject<T = any> = { current: T }
 
 -- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/shared/ReactTypes.js#L301-L305
--- ROBLOX DEVIATION: The client-only prototype omits the server-oriented name.
 export type ActivityProps = {
 	mode: ("hidden" | "visible")?,
 	children: ReactNodeList?,
+	name: string?,
 }
 
 -- ROBLOX deviation START: No Luau support for numeric literal types

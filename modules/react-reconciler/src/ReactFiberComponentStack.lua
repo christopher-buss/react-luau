@@ -28,6 +28,9 @@ local IndeterminateComponent = ReactWorkTags.IndeterminateComponent
 local ForwardRef = ReactWorkTags.ForwardRef
 local SimpleMemoComponent = ReactWorkTags.SimpleMemoComponent
 local ClassComponent = ReactWorkTags.ClassComponent
+local OffscreenComponent = ReactWorkTags.OffscreenComponent
+
+local REACT_ACTIVITY_TYPE = require(Packages.Shared).ReactSymbols.REACT_ACTIVITY_TYPE
 
 local ReactComponentStackFrame = require(Packages.Shared).ReactComponentStackFrame
 local describeBuiltInComponentFrame =
@@ -58,6 +61,10 @@ local function describeFiber(fiber: Fiber): string
 		return describeBuiltInComponentFrame("Suspense", source, owner)
 	elseif fiber.tag == SuspenseListComponent then
 		return describeBuiltInComponentFrame("SuspenseList", source, owner)
+	elseif
+		fiber.tag == OffscreenComponent and fiber.elementType == REACT_ACTIVITY_TYPE
+	then
+		return describeBuiltInComponentFrame("Activity", source, owner)
 	elseif
 		fiber.tag == FunctionComponent
 		or fiber.tag == IndeterminateComponent
