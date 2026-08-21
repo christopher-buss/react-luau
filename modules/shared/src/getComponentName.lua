@@ -35,6 +35,7 @@ local REACT_SUSPENSE_TYPE = ReactSymbols.REACT_SUSPENSE_TYPE
 local REACT_SUSPENSE_LIST_TYPE = ReactSymbols.REACT_SUSPENSE_LIST_TYPE
 local REACT_LAZY_TYPE = ReactSymbols.REACT_LAZY_TYPE
 local REACT_BLOCK_TYPE = ReactSymbols.REACT_BLOCK_TYPE
+local REACT_ACTIVITY_TYPE = ReactSymbols.REACT_ACTIVITY_TYPE
 local ReactTypes = require(script.Parent.ReactTypes)
 type ReactContext<T> = ReactTypes.ReactContext<T>
 type ReactProviderType<T> = ReactTypes.ReactProviderType<T>
@@ -103,6 +104,9 @@ local function getComponentName(type: any): string | nil
 		return "Suspense"
 	elseif type == REACT_SUSPENSE_LIST_TYPE then
 		return "SuspenseList"
+	elseif type == REACT_ACTIVITY_TYPE then
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/shared/getComponentNameFromType.js#L82-L84
+		return "Activity"
 	end
 
 	if typeofType == "table" then
