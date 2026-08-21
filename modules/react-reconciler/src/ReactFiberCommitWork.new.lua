@@ -167,6 +167,8 @@ local NoMode = ReactTypeOfMode.NoMode
 local ConcurrentMode = ReactTypeOfMode.ConcurrentMode
 local ProfileMode = ReactTypeOfMode.ProfileMode
 local commitUpdateQueue = ReactUpdateQueueModule.commitUpdateQueue
+local deferHiddenCallbacks = ReactUpdateQueueModule.deferHiddenCallbacks
+local commitHiddenCallbacks = ReactUpdateQueueModule.commitHiddenCallbacks
 local getPublicInstance = ReactFiberHostConfig.getPublicInstance
 local supportsMutation = ReactFiberHostConfig.supportsMutation
 local supportsPersistence = ReactFiberHostConfig.supportsPersistence
@@ -528,6 +530,24 @@ function commitProfilerPassiveEffect(finishedRoot: FiberRoot, finishedWork: Fibe
 	end
 end
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/5e4e2dae0ba1836d26fa4e5edb4475d3b3e0a60c/packages/react-reconciler/src/ReactFiberCommitWork.new.js#L2157-L2173
+-- ROBLOX DEVIATION: The recursive layout traversal reaches the hidden
+-- Offscreen boundary before its children, so callbacks are deferred here.
+local function deferHiddenCallbacksInSubtree(subtreeRoot: Fiber): ()
+	if subtreeRoot.tag == ClassComponent then
+		local updateQueue: UpdateQueue<any>? = subtreeRoot.updateQueue
+		if updateQueue ~= nil then
+			deferHiddenCallbacks(updateQueue)
+		end
+	end
+
+	local child = subtreeRoot.child
+	while child ~= nil do
+		deferHiddenCallbacksInSubtree(child)
+		child = child.sibling
+	end
+end
+
 local function recursivelyCommitLayoutEffects(
 	finishedWork: Fiber,
 	finishedRoot: FiberRoot,
@@ -554,6 +574,11 @@ local function recursivelyCommitLayoutEffects(
 	then
 		local isHidden = finishedWork.memoizedState ~= nil
 		if isHidden then
+			local child = finishedWork.child
+			while child ~= nil do
+				deferHiddenCallbacksInSubtree(child)
+				child = child.sibling
+			end
 			return
 		end
 
@@ -1304,6 +1329,11 @@ function reappearLayoutEffects(subtreeRoot: Fiber): ()
 			safelyCallComponentDidMount(subtreeRoot, subtreeRoot.return_, instance)
 		end
 		safelyAttachRef(subtreeRoot, subtreeRoot.return_)
+		local updateQueue: UpdateQueue<any>? = subtreeRoot.updateQueue
+		if updateQueue ~= nil then
+			commitHiddenCallbacks(subtreeRoot, updateQueue, instance)
+			commitUpdateQueue(subtreeRoot, updateQueue, instance)
+		end
 	elseif tag == HostComponent then
 		safelyAttachRef(subtreeRoot, subtreeRoot.return_)
 	end
