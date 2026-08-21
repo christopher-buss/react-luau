@@ -99,7 +99,9 @@ local PassiveMask = ReactFiberFlags.PassiveMask
 local StaticMask = ReactFiberFlags.StaticMask
 local PerformedWork = ReactFiberFlags.PerformedWork
 
-local invariant = require(Packages.Shared).invariant
+local ReactShared = require(Packages.Shared)
+local invariant = ReactShared.invariant
+local REACT_ACTIVITY_TYPE = ReactShared.ReactSymbols.REACT_ACTIVITY_TYPE
 
 local createInstance = ReactFiberHostConfig.createInstance
 local createTextInstance = ReactFiberHostConfig.createTextInstance
@@ -1595,6 +1597,12 @@ local function completeWork(
 				and workInProgress.tag == OffscreenComponent
 			then
 				workInProgress.flags = bit32.bor(workInProgress.flags, Update)
+				if workInProgress.elementType == REACT_ACTIVITY_TYPE then
+					-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberFlags.js#L127
+					-- ROBLOX DEVIATION: React 19 includes Visibility in PassiveMask.
+					-- React-Luau's older flag layout schedules an explicit passive pass.
+					workInProgress.flags = bit32.bor(workInProgress.flags, Passive)
+				end
 			end
 		end
 

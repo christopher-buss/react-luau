@@ -162,7 +162,7 @@ local SyncLane = ReactFiberLane.SyncLane
 local SyncBatchedLane = ReactFiberLane.SyncBatchedLane
 local NoTimestamp = ReactFiberLane.NoTimestamp
 local findUpdateLane = ReactFiberLane.findUpdateLane
-local findTransitionLane = ReactFiberLane.findTransitionLane
+local claimNextTransitionLane = ReactFiberLane.claimNextTransitionLane
 local findRetryLane = ReactFiberLane.findRetryLane
 local includesSomeLane = ReactFiberLane.includesSomeLane
 local isSubsetOfLanes = ReactFiberLane.isSubsetOfLanes
@@ -190,7 +190,6 @@ local lanePriorityToSchedulerPriority = ReactFiberLane.lanePriorityToSchedulerPr
 local ReactFiberTransition = require(script.Parent.ReactFiberTransition)
 -- deviation: Use properties directly instead of localizing to avoid 200 limit
 -- local requestCurrentTransition = ReactFiberTransition.requestCurrentTransition
--- local NoTransition = ReactFiberTransition.NoTransition
 
 local ReactFiberUnwindWork = require(script.Parent["ReactFiberUnwindWork.new"]) :: any
 local unwindWork = ReactFiberUnwindWork.unwindWork
@@ -413,8 +412,6 @@ local workInProgressRootUpdatedLanes: Lanes = ReactFiberLane.NoLanes
 -- Lanes that were pinged (in an interleaved event) during this render.
 local workInProgressRootPingedLanes: Lanes = ReactFiberLane.NoLanes
 
-local mostRecentlyUpdatedRoot: FiberRoot | nil = nil
-
 -- The most recent time we committed a fallback. This lets us ensure a train
 -- model where we don't commit new loading states in too quick succession.
 local globalMostRecentFallbackTime: number = 0
@@ -469,7 +466,8 @@ local spawnedWorkDuringRender: nil | Array<Lane | Lanes> = nil
 -- between the first and second call.
 local currentEventTime: number = NoTimestamp
 local currentEventWipLanes: Lanes = ReactFiberLane.NoLanes
-local currentEventPendingLanes: Lanes = ReactFiberLane.NoLanes
+-- ROBLOX upstream: https://github.com/facebook/react/blob/34aa5cfe0d9b6ec4667e02bf46ab34d83dfb2d6d/packages/react-reconciler/src/ReactFiberWorkLoop.new.js#L407-L408
+local currentEventTransitionLane: Lane = ReactFiberLane.NoLane
 
 local focusedInstanceHandle: nil | Fiber = nil
 local shouldFireAfterActiveInstanceBlur: boolean = false
@@ -539,22 +537,23 @@ exports.requestUpdateLane = function(fiber: Fiber): Lane
 	-- event. Then reset the cached values once we can be sure the event is over.
 	-- Our heuristic for that is whenever we enter a concurrent work loop.
 	--
-	-- We'll do the same for `currentEventPendingLanes` below.
 	if currentEventWipLanes == ReactFiberLane.NoLanes then
 		currentEventWipLanes = workInProgressRootIncludedLanes
 	end
 
-	local isTransition = ReactFiberTransition.requestCurrentTransition()
-		~= ReactFiberTransition.NoTransition
-	if isTransition then
-		if currentEventPendingLanes ~= ReactFiberLane.NoLanes then
-			if mostRecentlyUpdatedRoot ~= nil then
-				currentEventPendingLanes = mostRecentlyUpdatedRoot.pendingLanes
-			else
-				currentEventPendingLanes = ReactFiberLane.NoLanes
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/34aa5cfe0d9b6ec4667e02bf46ab34d83dfb2d6d/packages/react-reconciler/src/ReactFiberWorkLoop.new.js#L453-L476
+	local transition = ReactFiberTransition.requestCurrentTransition()
+	if transition ~= nil then
+		if __DEV__ then
+			if transition._updatedFibers == nil then
+				transition._updatedFibers = Set.new()
 			end
+			transition._updatedFibers:add(fiber)
 		end
-		return findTransitionLane(currentEventWipLanes, currentEventPendingLanes)
+		if currentEventTransitionLane == ReactFiberLane.NoLane then
+			currentEventTransitionLane = claimNextTransitionLane()
+		end
+		return currentEventTransitionLane
 	end
 
 	-- TODO: Remove this dependency on the Scheduler priority.
@@ -723,12 +722,6 @@ exports.scheduleUpdateOnFiber = function(
 		mod.schedulePendingInteractions(root, lane)
 	end
 
-	-- We use this when assigning a lane for a transition inside
-	-- `requestUpdateLane`. We assume it's the same as the root being updated,
-	-- since in the common case of a single root app it probably is. If it's not
-	-- the same root, then it's not a huge deal, we just might batch more stuff
-	-- together more than necessary.
-	mostRecentlyUpdatedRoot = root
 	return root
 end
 
@@ -875,7 +868,7 @@ mod.performConcurrentWorkOnRoot = function(root): (() -> ...any) | nil
 	-- event time. The next update will compute a new event time.
 	currentEventTime = NoTimestamp
 	currentEventWipLanes = ReactFiberLane.NoLanes
-	currentEventPendingLanes = ReactFiberLane.NoLanes
+	currentEventTransitionLane = ReactFiberLane.NoLane
 
 	invariant(
 		bit32.band(executionContext, bit32.bor(RenderContext, CommitContext)) == NoContext,
@@ -2815,6 +2808,20 @@ exports.flushPassiveEffects = function(): boolean
 	return false
 end
 
+local function shouldSkipActivityPassiveChildren(fiber: Fiber): boolean
+	if
+		fiber.tag ~= ReactWorkTags.OffscreenComponent
+		or fiber.elementType ~= ReactShared.ReactSymbols.REACT_ACTIVITY_TYPE
+	then
+		return false
+	end
+
+	local current = fiber.alternate
+	local isHidden = fiber.memoizedState ~= nil
+	local wasHidden = current ~= nil and current.memoizedState ~= nil
+	return isHidden or wasHidden
+end
+
 flushPassiveMountEffects = function(root, firstChild: Fiber): ()
 	local fiber = firstChild
 	while fiber ~= nil do
@@ -2832,7 +2839,11 @@ flushPassiveMountEffects = function(root, firstChild: Fiber): ()
 		local primarySubtreeFlags =
 			bit32.band(fiber.subtreeFlags, ReactFiberFlags.PassiveMask)
 
-		if fiber.child ~= nil and primarySubtreeFlags ~= ReactFiberFlags.NoFlags then
+		if
+			fiber.child ~= nil
+			and primarySubtreeFlags ~= ReactFiberFlags.NoFlags
+			and not shouldSkipActivityPassiveChildren(fiber)
+		then
 			flushPassiveMountEffects(root, fiber.child)
 		end
 
@@ -2929,7 +2940,7 @@ local function flushPassiveUnmountEffects(firstChild: Fiber): ()
 		end
 
 		local child = fiber.child
-		if child ~= nil then
+		if child ~= nil and not shouldSkipActivityPassiveChildren(fiber) then
 			-- If any children have passive effects then traverse the subtree.
 			-- Note that this requires checking subtreeFlags of the current Fiber,
 			-- rather than the subtreeFlags/effectsTag of the first child,
