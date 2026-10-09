@@ -297,7 +297,7 @@ exports.createContainer = function(
 	hydrate: boolean,
 	hydrationCallbacks: nil | SuspenseHydrationCallbacks,
 	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberReconciler.js#L236-L239
-	isStrictMode: boolean?
+	isStrictMode: boolean
 ): OpaqueRoot
 	return createFiberRoot(containerInfo, tag, hydrate, hydrationCallbacks, isStrictMode)
 end

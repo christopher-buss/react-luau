@@ -108,7 +108,7 @@ exports.createFiberRoot = function(
 	hydrate: boolean,
 	hydrationCallbacks: SuspenseHydrationCallbacks?,
 	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberRoot.js#L163
-	isStrictMode: boolean?
+	isStrictMode: boolean
 ): FiberRoot
 	local root: FiberRoot = FiberRootNode(containerInfo, tag, hydrate)
 	if enableSuspenseCallback then

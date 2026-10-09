@@ -2517,6 +2517,8 @@ function invokeLayoutEffectMountInDEV(fiber: Fiber): ()
 			or fiber.tag == SimpleMemoComponent
 			or fiber.tag == Block
 		then
+			-- ROBLOX DEVIATION: upstream commitHookEffectListMount captures its own
+			-- errors; React-Luau's does not, so the call is guarded here.
 			local ok, error_ = xpcall(
 				commitHookEffectListMount,
 				describeError,
@@ -2546,6 +2548,8 @@ function invokePassiveEffectMountInDEV(fiber: Fiber): ()
 			or fiber.tag == SimpleMemoComponent
 			or fiber.tag == Block
 		then
+			-- ROBLOX DEVIATION: upstream commitHookEffectListMount captures its own
+			-- errors; React-Luau's does not, so the call is guarded here.
 			local ok, error_ = xpcall(
 				commitHookEffectListMount,
 				describeError,

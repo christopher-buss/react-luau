@@ -48,9 +48,9 @@ The behavior-bearing upstream chain:
 | Upstream source or symbol | React-Luau target | Port status | Deviation |
 | --- | --- | --- | --- |
 | `ReactTypeOfMode.js` strict bits | `ReactTypeOfMode.lua` | Adapted | React 17 bit layout kept; `StrictLegacyMode` takes the old bit, `StrictEffectsMode` the next free bit. |
-| `ReactFiberFlags.js` `PlacementDEV` | `ReactFiberFlags.lua` | Adapted | Next free bit in the React 17 layout. |
+| `ReactFiberFlags.js` `PlacementDEV` | `ReactFiberFlags.lua` | Adapted | Next free bit (bit 18) in the React 17 layout. |
 | `ReactFiber.js` `createHostRootFiber`, `REACT_STRICT_MODE_TYPE` | `ReactFiber.new.lua` | Adapted | React-Luau keeps blocking roots; they are strict only on request, and `BlockingMode` admits `StrictEffectsMode`. |
-| `ReactFiberRoot.js`, `ReactFiberReconciler.js` `isStrictMode` | `ReactFiberRoot.new.lua`, `ReactFiberReconciler.new.lua` | Adapted | Appended after the existing `hydrate` and `hydrationCallbacks` parameters. |
+| `ReactFiberRoot.js`, `ReactFiberReconciler.js` `isStrictMode` | `ReactFiberRoot.new.lua`, `ReactFiberReconciler.new.lua` | Adapted | Required; appended after the existing `hydrate` and `hydrationCallbacks` parameters. |
 | `ReactDOMRoot.js` `unstable_strictMode` | `ReactRobloxRoot.lua`, `ReactRobloxHostTypes.roblox.lua` | Direct | None. |
 | `ReactTestRenderer.js` `unstable_strictMode` | `ReactTestRenderer.lua` | Direct | None. |
 | `ReactChildFiber.js` `placeChild`, `placeSingleChild` | `ReactChildFiber.new.lua` | Direct | None. |
@@ -59,10 +59,10 @@ The behavior-bearing upstream chain:
 | `ReactFiberHooks.js` `mountEffect`, `mountLayoutEffect`, `mountImperativeHandle`, `bailoutHooks` | `ReactFiberHooks.new.lua` | Direct | None. |
 | `ReactFiberCommitWork.js` `disappearLayoutEffectsForDEVValidation`, `reappearLayoutEffectsForDEVValidation` | `ReactFiberCommitWork.new.lua` | Adapted | Wrap the existing recursive walks. `reappearLayoutEffects` gains `includeWorkInProgressEffects`; `nil` keeps the Suspense and Activity callers. |
 | `ReactFiberCommitWork.js` `disconnectPassiveEffect`, `reconnectPassiveEffects` | `ReactFiberCommitWork.new.lua` | Adapted | The Activity walks move to module scope and are shared. Hidden Activity Offscreen fibers stop both walks. |
-| `ReactFiberCommitWork.js` `invoke*InDEV` | `ReactFiberCommitWork.new.lua` | Direct | `__DEV__` gate only. |
-| `ReactFiberWorkLoop.js` `doubleInvokeEffectsInDEVIfNecessary` and helpers | `ReactFiberWorkLoop.new.lua` | Adapted | `Update` stands in for `Visibility`; no `runWithFiberInDEV` (the debug fiber is set and reset); no `setIsStrictModeForDevtools`; functions live on `mod` to stay under the Luau 200-local limit; recursive `invokeEffectsInDev`. |
+| `ReactFiberCommitWork.js` `invoke*InDEV` | `ReactFiberCommitWork.new.lua` | Adapted | The mount functions guard `commitHookEffectListMount` with `xpcall` and `captureCommitPhaseError`, because the local one does not capture its own errors. The unmount functions match upstream; `commitHookEffectListUnmount` guards each destroy through `safelyCallDestroy`. |
+| `ReactFiberWorkLoop.js` `doubleInvokeEffectsInDEVIfNecessary` and helpers | `ReactFiberWorkLoop.new.lua` | Adapted | `Update` stands in for `Visibility`; `runWithFiberInDEV` lives on `mod`, not `ReactCurrentFiber`, and has no `_debugTask`; no `setIsStrictModeForDevtools`; functions live on `mod` to stay under the Luau 200-local limit; recursive `invokeEffectsInDev`. |
 | `ReactFiberUpdateQueue`, `ReactStrictModeWarnings`, act warning, `findDOMNode` warning readers | Matching modules | Direct | Read `StrictLegacyMode`. |
-| `shared/ReactFeatureFlags.js` | `ReactFeatureFlags.lua` | Direct | `enableDoubleInvokingEffects` removed; React 19 has no Strict Effects flag. |
+| `shared/ReactFeatureFlags.js` | `ReactFeatureFlags.lua` | Direct | `enableDoubleInvokingEffects` removed; React 19 has no Strict Effects flag. `disableLegacyMode` (upstream default `true`) is not added; legacy roots and their behavior stay. |
 | `ReactFiberDevToolsHook.js` `setIsStrictModeForDevtools` and console dimming | No target | Out of scope | React 19 console dimming is excluded. Logs are not silenced during the double invocation. |
 | Hydration double invoke | No target | Out of scope | ReactRoblox does not hydrate. |
 

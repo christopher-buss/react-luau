@@ -484,7 +484,7 @@ local function resetWorkInProgress(workInProgress: Fiber, renderLanes: Lanes)
 end
 
 -- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiber.js#L529-L548
-local function createHostRootFiber(tag: RootTag, isStrictMode: boolean?): Fiber
+local function createHostRootFiber(tag: RootTag, isStrictMode: boolean): Fiber
 	local mode
 	if tag == ConcurrentRoot then
 		mode = bit32.bor(ConcurrentMode, BlockingMode)

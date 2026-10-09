@@ -3387,12 +3387,23 @@ mod.doubleInvokeEffectsOnFiber = function(root: FiberRoot, fiber: Fiber): ()
 	ReactFiberCommitWork.reconnectPassiveEffects(fiber)
 end
 
--- ROBLOX DEVIATION: React-Luau has no runWithFiberInDEV; the current debug
--- Fiber is set and reset around each call instead.
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactCurrentFiber.js#L46-L74
+-- ROBLOX DEVIATION: React-Luau's ReactCurrentFiber has no runWithFiberInDEV or
+-- _debugTask, so it lives here beside its only callers.
 mod.runWithFiberInDEV = function(fiber: Fiber, callback: (...any) -> (), ...: any): ()
+	local previousFiber = ReactCurrentFiber.current
 	setCurrentDebugFiberInDEV(fiber)
-	callback(...)
-	resetCurrentDebugFiberInDEV()
+	-- ROBLOX try
+	local ok, error_ = xpcall(callback, describeError, ...)
+	-- ROBLOX finally
+	if previousFiber ~= nil then
+		setCurrentDebugFiberInDEV(previousFiber)
+	else
+		resetCurrentDebugFiberInDEV()
+	end
+	if not ok then
+		error(error_)
+	end
 end
 
 -- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberWorkLoop.js#L5340-L5388
