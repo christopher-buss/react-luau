@@ -100,14 +100,9 @@ describe("ReactIncrementalReflection", function()
 		jestExpect(instances[1]:_isMounted()).toBe(false)
 
 		-- Render the rest and commit the updates.
-		jestExpect(function()
-			return jestExpect(Scheduler).toFlushAndYield({
-				"componentDidMount: true",
-			})
-		end).toErrorDev(
-			"Using UNSAFE_componentWillMount in strict mode is not recommended",
-			{ withoutStack = true }
-		)
+		jestExpect(Scheduler).toFlushAndYield({
+			"componentDidMount: true",
+		})
 		jestExpect(instances[1]:_isMounted()).toBe(true)
 	end)
 
@@ -148,14 +143,9 @@ describe("ReactIncrementalReflection", function()
 		end
 
 		ReactNoop.render(React.createElement(Foo, { mount = true }))
-		jestExpect(function()
-			return jestExpect(Scheduler).toFlushAndYield({
-				"Component",
-			})
-		end).toErrorDev(
-			"Using UNSAFE_componentWillMount in strict mode is not recommended",
-			{ withoutStack = true }
-		)
+		jestExpect(Scheduler).toFlushAndYield({
+			"Component",
+		})
 
 		jestExpect(instances[1]:_isMounted()).toBe(true)
 

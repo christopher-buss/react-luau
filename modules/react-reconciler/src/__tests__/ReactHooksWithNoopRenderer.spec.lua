@@ -1296,7 +1296,9 @@ describe("useEffect", function()
 				ReactNoop.render(React.createElement(Counter, { count = 0 }), function()
 					Scheduler.unstable_yieldValue("Sync effect")
 				end)
-				jestExpect(Scheduler).toFlushAndYieldThrough({ 0, "Sync effect" } :: Array<any>)
+				jestExpect(Scheduler).toFlushAndYieldThrough(
+					{ 0, "Sync effect" } :: Array<any>
+				)
 				jestExpect(ReactNoop.getChildren()).toEqual({ span(0) })
 				-- Before the effects have a chance to flush, schedule another update
 				ReactNoop.render(React.createElement(Counter, { count = 1 }), function()
@@ -1963,15 +1965,14 @@ describe("useEffect", function()
 			return React.createElement(Text, { text = "Count: " .. tostring(count) })
 		end
 
-		-- we explicitly wait for missing act() warnings here since
-		-- it's a lot harder to simulate this condition inside an act scope
-		jestExpect(function()
-			ReactNoop.render(React.createElement(Counter, { count = 0 }), function()
-				Scheduler.unstable_yieldValue("Sync effect")
-			end)
-			jestExpect(Scheduler).toFlushAndYieldThrough({ "Count: 0", "Sync effect" })
-			jestExpect(ReactNoop.getChildren()).toEqual({ span("Count: 0") })
-		end).toErrorDev({ "An update to Counter ran an effect" })
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/__tests__/ReactHooksWithNoopRenderer-test.js#L1704-L1708
+		-- A concurrent root is no longer strict, so the act() effect warning
+		-- does not fire.
+		ReactNoop.render(React.createElement(Counter, { count = 0 }), function()
+			Scheduler.unstable_yieldValue("Sync effect")
+		end)
+		jestExpect(Scheduler).toFlushAndYieldThrough({ "Count: 0", "Sync effect" })
+		jestExpect(ReactNoop.getChildren()).toEqual({ span("Count: 0") })
 
 		-- A flush sync doesn't cause the passive effects to fire.
 		-- So we haven't added the other update yet.
@@ -4047,15 +4048,18 @@ describe("useRef", function()
 					end
 				end
 			end, {})
-			local debouncedCallback = useCallback(function(...)
-				if typeof(timeoutID.current) == "table" then
-					clearTimeout(timeoutID.current)
-				end
-				timeoutID.current = setTimeout(callback, ms, ...)
-			end, {
-				callback,
-				ms,
-			} :: Array<any>)
+			local debouncedCallback = useCallback(
+				function(...)
+					if typeof(timeoutID.current) == "table" then
+						clearTimeout(timeoutID.current)
+					end
+					timeoutID.current = setTimeout(callback, ms, ...)
+				end,
+				{
+					callback,
+					ms,
+				} :: Array<any>
+			)
 			return useCallback(debouncedCallback, inputs)
 		end
 
@@ -4136,15 +4140,18 @@ describe("useBinding", function()
 					end
 				end
 			end, {})
-			local debouncedCallback = useCallback(function(...)
-				if typeof(timeoutID:getValue()) == "table" then
-					clearTimeout(timeoutID:getValue())
-				end
-				updateTimeout(setTimeout(callback, ms, ...))
-			end, {
-				callback,
-				ms,
-			} :: Array<any>)
+			local debouncedCallback = useCallback(
+				function(...)
+					if typeof(timeoutID:getValue()) == "table" then
+						clearTimeout(timeoutID:getValue())
+					end
+					updateTimeout(setTimeout(callback, ms, ...))
+				end,
+				{
+					callback,
+					ms,
+				} :: Array<any>
+			)
 			return useCallback(debouncedCallback, inputs)
 		end
 
