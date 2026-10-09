@@ -109,7 +109,7 @@ local ReactCurrentFiberIsRendering = ReactCurrentFiber.isRendering
 local resetCurrentDebugFiberInDEV = ReactCurrentFiber.resetCurrentFiber
 local setCurrentDebugFiberInDEV = ReactCurrentFiber.setCurrentFiber
 local ReactTypeOfMode = require(script.Parent.ReactTypeOfMode)
-local StrictMode = ReactTypeOfMode.StrictMode
+local StrictLegacyMode = ReactTypeOfMode.StrictLegacyMode
 local SyncLane = ReactFiberLane.SyncLane
 local InputDiscreteHydrationLane = ReactFiberLane.InputDiscreteHydrationLane
 local SelectiveHydrationLane = ReactFiberLane.SelectiveHydrationLane
@@ -240,7 +240,7 @@ local function findHostInstanceWithWarning(
 		if hostFiber == nil then
 			return nil
 		end
-		if bit32.band(hostFiber.mode, StrictMode) ~= 0 then
+		if bit32.band(hostFiber.mode, StrictLegacyMode) ~= 0 then
 			local componentName = getComponentName(fiber.type) or "Component"
 			if not didWarnAboutFindNodeInStrictMode[componentName] then
 				didWarnAboutFindNodeInStrictMode[componentName] = true
@@ -248,7 +248,7 @@ local function findHostInstanceWithWarning(
 				local previousFiber = ReactCurrentFiber.current
 				local ok, result = xpcall(function()
 					setCurrentDebugFiberInDEV(hostFiber)
-					if bit32.band(fiber.mode, StrictMode) ~= 0 then
+					if bit32.band(fiber.mode, StrictLegacyMode) ~= 0 then
 						console.error(
 							"%s is deprecated in StrictMode. "
 								.. "%s was passed an instance of %s which is inside StrictMode. "
@@ -295,9 +295,11 @@ exports.createContainer = function(
 	containerInfo: Container,
 	tag: RootTag,
 	hydrate: boolean,
-	hydrationCallbacks: nil | SuspenseHydrationCallbacks
+	hydrationCallbacks: nil | SuspenseHydrationCallbacks,
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberReconciler.js#L236-L239
+	isStrictMode: boolean
 ): OpaqueRoot
-	return createFiberRoot(containerInfo, tag, hydrate, hydrationCallbacks)
+	return createFiberRoot(containerInfo, tag, hydrate, hydrationCallbacks, isStrictMode)
 end
 
 exports.updateContainer = function(

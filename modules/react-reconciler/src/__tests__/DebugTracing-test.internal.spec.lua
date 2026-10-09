@@ -346,8 +346,9 @@ describe("DebugTracing", function()
 				jestExpect(Scheduler).toFlushUntilNextPaint({})
 			end).toErrorDev("Cannot update during an existing state transition")
 		end).toLogDev({
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/__tests__/DebugTracing-test.internal.js#L270-L272
+			-- A concurrent root is no longer strict, so render runs once.
 			-- 	"group: * render (0b0000000000000000000001000000000)",
-			"* Example updated state (0b0000000000000000000001000000000)",
 			"* Example updated state (0b0000000000000000000001000000000)",
 		}, { withoutStack = true })
 	end)
@@ -434,8 +435,9 @@ describe("DebugTracing", function()
 				)
 			end)
 		end).toLogDev({
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/__tests__/DebugTracing-test.internal.js#L349-L351
+			-- A concurrent root is no longer strict, so render runs once.
 			-- 	"group: * render (0b0000000000000000000001000000000)",
-			"* Example updated state (0b0000000000000000000001000000000)",
 			"* Example updated state (0b0000000000000000000001000000000)",
 			-- 	"groupEnd: * render (0b0000000000000000000001000000000)",
 		}, { withoutStack = true })

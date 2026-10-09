@@ -34,7 +34,7 @@ end)
 
 describe("Context stack", function()
 	it("should throw when pushing to top level of non-empty stack", function()
-		local fiber = ReactFiber.createHostRootFiber(ReactRootTags.BlockingRoot)
+		local fiber = ReactFiber.createHostRootFiber(ReactRootTags.BlockingRoot, false)
 		local context = {
 			foo = 1,
 		}
@@ -49,7 +49,7 @@ describe("Context stack", function()
 	end)
 
 	it("should throw if when invalidating a provider that isn't initialized", function()
-		local fiber = ReactFiber.createHostRootFiber(ReactRootTags.BlockingRoot)
+		local fiber = ReactFiber.createHostRootFiber(ReactRootTags.BlockingRoot, false)
 		jestExpect(function()
 			ReactFiberContext.invalidateContextProvider(fiber, nil, true)
 		end).toThrow("Expected to have an instance by this point.")

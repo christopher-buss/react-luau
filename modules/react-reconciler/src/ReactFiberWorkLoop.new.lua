@@ -56,7 +56,6 @@ local ReactFeatureFlags = require(Packages.Shared).ReactFeatureFlags
 local enableDebugTracing = ReactFeatureFlags.enableDebugTracing
 local enableSchedulingProfiler = ReactFeatureFlags.enableSchedulingProfiler
 local skipUnmountedBoundaries = ReactFeatureFlags.skipUnmountedBoundaries
-local enableDoubleInvokingEffects = ReactFeatureFlags.enableDoubleInvokingEffects
 local deletedTreeCleanUpLevel = ReactFeatureFlags.deletedTreeCleanUpLevel
 local enableNewTreeCleanupPath = ReactFeatureFlags.enableNewTreeCleanupPath
 local ReactShared = require(Packages.Shared)
@@ -2410,9 +2409,10 @@ mod.commitRootImpl = function(root: FiberRoot, renderPriorityLevel)
 		legacyErrorBoundariesThatAlreadyFailed = nil
 	end
 
-	if __DEV__ and enableDoubleInvokingEffects then
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberWorkLoop.js#L4242-L4246
+	if __DEV__ then
 		if not rootDidHavePassiveEffects then
-			commitDoubleInvokeEffectsInDEV(root.current, false)
+			mod.commitDoubleInvokeEffectsInDEV(root, false)
 		end
 	end
 
@@ -3055,8 +3055,9 @@ flushPassiveEffectsImpl = function()
 		SchedulingProfiler.markPassiveEffectsStopped(root)
 	end
 
-	if __DEV__ and enableDoubleInvokingEffects then
-		commitDoubleInvokeEffectsInDEV(root.current, true)
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberWorkLoop.js#L4801-L4803
+	if __DEV__ then
+		mod.commitDoubleInvokeEffectsInDEV(root, true)
 	end
 
 	if ReactFeatureFlags.enableSchedulerTracing then
@@ -3346,59 +3347,223 @@ function flushRenderPhaseStrictModeWarningsInDEV()
 	end
 end
 
-function commitDoubleInvokeEffectsInDEV(fiber: Fiber, hasPassiveEffects: boolean)
-	if __DEV__ and enableDoubleInvokingEffects then
-		setCurrentDebugFiberInDEV(fiber)
-		invokeEffectsInDev(
-			fiber,
-			ReactFiberFlags.MountLayoutDev,
-			invokeLayoutEffectUnmountInDEV
-		)
-		if hasPassiveEffects then
-			invokeEffectsInDev(
-				fiber,
-				ReactFiberFlags.MountPassiveDev,
-				invokePassiveEffectUnmountInDEV
-			)
-		end
-
-		invokeEffectsInDev(
-			fiber,
-			ReactFiberFlags.MountLayoutDev,
-			invokeLayoutEffectMountInDEV
-		)
-		if hasPassiveEffects then
-			invokeEffectsInDev(
-				fiber,
-				ReactFiberFlags.MountPassiveDev,
-				invokePassiveEffectMountInDEV
-			)
-		end
-		resetCurrentDebugFiberInDEV()
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberWorkLoop.js#L5310-L5326
+mod.recursivelyTraverseAndDoubleInvokeEffectsInDEV = function(
+	root: FiberRoot,
+	parentFiber: Fiber,
+	isInStrictMode: boolean
+): ()
+	-- ROBLOX DEVIATION: React-Luau's React 17 flag layout uses Update for
+	-- Offscreen visibility work instead of React 18's Visibility flag.
+	if
+		bit32.band(
+			parentFiber.subtreeFlags,
+			bit32.bor(ReactFiberFlags.PlacementDEV, ReactFiberFlags.Update)
+		) == ReactFiberFlags.NoFlags
+	then
+		-- Parent's descendants have already had effects double invoked.
+		-- Early exit to avoid unnecessary tree traversal.
+		return
+	end
+	local child = parentFiber.child
+	while child ~= nil do
+		mod.doubleInvokeEffectsInDEVIfNecessary(root, child, isInStrictMode)
+		child = child.sibling
 	end
 end
 
-function invokeEffectsInDev(
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberWorkLoop.js#L5328-L5338
+-- ROBLOX DEVIATION: React-Luau's DevTools hook has no strict-mode console
+-- state, so setIsStrictModeForDevtools has no target.
+-- Unconditionally disconnects and connects passive and layout effects.
+mod.doubleInvokeEffectsOnFiber = function(root: FiberRoot, fiber: Fiber): ()
+	ReactFiberCommitWork.disappearLayoutEffectsForDEVValidation(fiber)
+	ReactFiberCommitWork.disconnectPassiveEffect(fiber)
+	ReactFiberCommitWork.reappearLayoutEffectsForDEVValidation(
+		root,
+		fiber.alternate,
+		fiber
+	)
+	ReactFiberCommitWork.reconnectPassiveEffects(fiber)
+end
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactCurrentFiber.js#L46-L74
+-- ROBLOX DEVIATION: React-Luau's ReactCurrentFiber has no runWithFiberInDEV or
+-- _debugTask, so it lives here beside its only callers.
+mod.runWithFiberInDEV = function(fiber: Fiber, callback: (...any) -> (), ...: any): ()
+	local previousFiber = ReactCurrentFiber.current
+	setCurrentDebugFiberInDEV(fiber)
+	-- ROBLOX try
+	local ok, error_ = xpcall(callback, describeError, ...)
+	-- ROBLOX finally
+	if previousFiber ~= nil then
+		setCurrentDebugFiberInDEV(previousFiber)
+	else
+		resetCurrentDebugFiberInDEV()
+	end
+	if not ok then
+		error(error_)
+	end
+end
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberWorkLoop.js#L5340-L5388
+mod.doubleInvokeEffectsInDEVIfNecessary = function(
+	root: FiberRoot,
+	fiber: Fiber,
+	parentIsInStrictMode: boolean
+): ()
+	local isStrictModeFiber = fiber.type
+		== ReactShared.ReactSymbols.REACT_STRICT_MODE_TYPE
+	local isInStrictMode = parentIsInStrictMode or isStrictModeFiber
+
+	-- First case: the fiber **is not** of type OffscreenComponent. No
+	-- special rules apply to double invoking effects.
+	if fiber.tag ~= ReactWorkTags.OffscreenComponent then
+		if
+			bit32.band(fiber.flags, ReactFiberFlags.PlacementDEV)
+			~= ReactFiberFlags.NoFlags
+		then
+			if isInStrictMode then
+				mod.runWithFiberInDEV(fiber, mod.doubleInvokeEffectsOnFiber, root, fiber)
+			end
+		else
+			mod.recursivelyTraverseAndDoubleInvokeEffectsInDEV(
+				root,
+				fiber,
+				isInStrictMode
+			)
+		end
+		return
+	end
+
+	-- Second case: the fiber **is** of type OffscreenComponent.
+	-- This branch contains cases specific to Offscreen.
+	if fiber.memoizedState == nil then
+		-- Only consider Offscreen that is visible.
+		-- TODO (Offscreen) Handle manual mode.
+		if
+			isInStrictMode
+			and bit32.band(
+					fiber.flags,
+					bit32.bor(ReactFiberFlags.Update, ReactFiberFlags.PlacementDEV)
+				)
+				~= ReactFiberFlags.NoFlags
+		then
+			-- Double invoke effects on Offscreen's subtree
+			-- if it is visible and its visibility has changed.
+			-- However, we also need to consider newly hydrated Offscreen because their
+			-- visibility flags might not have changed.
+			mod.runWithFiberInDEV(fiber, mod.doubleInvokeEffectsOnFiber, root, fiber)
+		elseif
+			bit32.band(fiber.subtreeFlags, ReactFiberFlags.PlacementDEV)
+			~= ReactFiberFlags.NoFlags
+		then
+			-- Something in the subtree could have been suspended.
+			-- We need to continue traversal and find newly inserted fibers.
+			mod.runWithFiberInDEV(
+				fiber,
+				mod.recursivelyTraverseAndDoubleInvokeEffectsInDEV,
+				root,
+				fiber,
+				isInStrictMode
+			)
+		end
+	end
+end
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberWorkLoop.js#L5390-L5419
+-- ROBLOX DEVIATION: React-Luau keeps blocking roots; like concurrent roots,
+-- they double invoke only inside a strict tree.
+mod.commitDoubleInvokeEffectsInDEV = function(root: FiberRoot, hasPassiveEffects: boolean)
+	if __DEV__ then
+		if root.tag ~= LegacyRoot then
+			local doubleInvokeEffects = true
+
+			if
+				bit32.band(
+					root.current.mode,
+					bit32.bor(
+						ReactTypeOfMode.StrictLegacyMode,
+						ReactTypeOfMode.StrictEffectsMode
+					)
+				) == ReactTypeOfMode.NoMode
+			then
+				doubleInvokeEffects = false
+			end
+			mod.recursivelyTraverseAndDoubleInvokeEffectsInDEV(
+				root,
+				root.current,
+				doubleInvokeEffects
+			)
+		else
+			mod.runWithFiberInDEV(
+				root.current,
+				mod.legacyCommitDoubleInvokeEffectsInDEV,
+				root.current,
+				hasPassiveEffects
+			)
+		end
+	end
+end
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberWorkLoop.js#L5421-L5438
+mod.legacyCommitDoubleInvokeEffectsInDEV = function(
+	fiber: Fiber,
+	hasPassiveEffects: boolean
+)
+	-- TODO (StrictEffects) Should we set a marker on the root if it contains strict effects
+	-- so we don't traverse unnecessarily? similar to subtreeFlags but just at the root level.
+	-- Maybe not a big deal since this is DEV only behavior.
+
+	mod.invokeEffectsInDev(
+		fiber,
+		ReactFiberFlags.MountLayoutDev,
+		invokeLayoutEffectUnmountInDEV
+	)
+	if hasPassiveEffects then
+		mod.invokeEffectsInDev(
+			fiber,
+			ReactFiberFlags.MountPassiveDev,
+			invokePassiveEffectUnmountInDEV
+		)
+	end
+
+	mod.invokeEffectsInDev(
+		fiber,
+		ReactFiberFlags.MountLayoutDev,
+		invokeLayoutEffectMountInDEV
+	)
+	if hasPassiveEffects then
+		mod.invokeEffectsInDev(
+			fiber,
+			ReactFiberFlags.MountPassiveDev,
+			invokePassiveEffectMountInDEV
+		)
+	end
+end
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberWorkLoop.js#L5440-L5464
+-- ROBLOX DEVIATION: React-Luau's recursive walk replaces the upstream
+-- iterative walk; both visit children before their parent.
+mod.invokeEffectsInDev = function(
 	firstChild: Fiber,
 	fiberFlags: Flags,
 	invokeEffectFn: (fiber: Fiber) -> ()
 ): ()
-	if __DEV__ and enableDoubleInvokingEffects then
-		local fiber = firstChild
-		while fiber ~= nil do
-			if fiber.child ~= nil then
-				local primarySubtreeFlag = bit32.band(fiber.subtreeFlags, fiberFlags)
-				if primarySubtreeFlag ~= ReactFiberFlags.NoFlags then
-					invokeEffectsInDev(fiber.child, fiberFlags, invokeEffectFn)
-				end
+	local fiber = firstChild
+	while fiber ~= nil do
+		if fiber.child ~= nil then
+			local primarySubtreeFlag = bit32.band(fiber.subtreeFlags, fiberFlags)
+			if primarySubtreeFlag ~= ReactFiberFlags.NoFlags then
+				mod.invokeEffectsInDev(fiber.child, fiberFlags, invokeEffectFn)
 			end
-
-			if bit32.band(fiber.flags, fiberFlags) ~= ReactFiberFlags.NoFlags then
-				invokeEffectFn(fiber)
-			end
-			-- ROBLOX FIXME Luau: Luau doesn't understand the loop ~= nil construct
-			fiber = fiber.sibling :: Fiber
 		end
+
+		if bit32.band(fiber.flags, fiberFlags) ~= ReactFiberFlags.NoFlags then
+			invokeEffectFn(fiber)
+		end
+		-- ROBLOX FIXME Luau: Luau doesn't understand the loop ~= nil construct
+		fiber = fiber.sibling :: Fiber
 	end
 end
 
@@ -3643,7 +3808,7 @@ exports.warnIfNotCurrentlyActingEffectsInDEV = function(fiber: Fiber): ()
 	if __DEV__ then
 		if
 			ReactFiberHostConfig.warnsIfNotActing == true
-			and bit32.band(fiber.mode, ReactTypeOfMode.StrictMode) ~= ReactTypeOfMode.NoMode
+			and bit32.band(fiber.mode, ReactTypeOfMode.StrictLegacyMode) ~= ReactTypeOfMode.NoMode
 			and IsSomeRendererActing.current == false
 			and exports.IsThisRendererActing.current == false
 		then

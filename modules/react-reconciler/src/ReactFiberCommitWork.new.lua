@@ -106,7 +106,6 @@ local enableProfilerCommitHooks = ReactFeatureFlags.enableProfilerCommitHooks
 -- local enableFundamentalAPI = ReactFeatureFlags.enableFundamentalAPI
 local enableSuspenseCallback = ReactFeatureFlags.enableSuspenseCallback
 -- local enableScopeAPI = ReactFeatureFlags.enableScopeAPI
-local enableDoubleInvokingEffects = ReactFeatureFlags.enableDoubleInvokingEffects
 local enableSuspenseLayoutEffectSemantics =
 	ReactFeatureFlags.enableSuspenseLayoutEffectSemantics
 local enableNewTreeCleanupPath = ReactFeatureFlags.enableNewTreeCleanupPath
@@ -1304,14 +1303,19 @@ end
 -- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/ReactFiberCommitWork.new.js#L2379-L2435
 -- ROBLOX DEVIATION: React-Luau's commit phase is recursive, so the upstream
 -- iterative reappear traversal is represented by an equivalent recursive walk.
-function reappearLayoutEffects(subtreeRoot: Fiber): ()
+function reappearLayoutEffects(
+	subtreeRoot: Fiber,
+	-- ROBLOX DEVIATION: nil keeps the existing Suspense and Activity callers,
+	-- which always commit work-in-progress class callbacks.
+	includeWorkInProgressEffects: boolean?
+): ()
 	if subtreeRoot.tag == OffscreenComponent and subtreeRoot.memoizedState ~= nil then
 		return
 	end
 
 	local child = subtreeRoot.child
 	while child ~= nil do
-		reappearLayoutEffects(child)
+		reappearLayoutEffects(child, includeWorkInProgressEffects)
 		child = child.sibling
 	end
 
@@ -1332,10 +1336,32 @@ function reappearLayoutEffects(subtreeRoot: Fiber): ()
 		local updateQueue: UpdateQueue<any>? = subtreeRoot.updateQueue
 		if updateQueue ~= nil then
 			commitHiddenCallbacks(subtreeRoot, updateQueue, instance)
-			commitUpdateQueue(subtreeRoot, updateQueue, instance)
+			if includeWorkInProgressEffects ~= false then
+				commitUpdateQueue(subtreeRoot, updateQueue, instance)
+			end
 		end
 	elseif tag == HostComponent then
 		safelyAttachRef(subtreeRoot, subtreeRoot.return_)
+	end
+end
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L3095-L3099
+local function disappearLayoutEffectsForDEVValidation(finishedWork: Fiber): ()
+	if __DEV__ then
+		disappearLayoutEffects(finishedWork)
+	end
+end
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L3289-L3302
+-- ROBLOX DEVIATION: React-Luau's recursive reappear walk reads neither the
+-- root nor the current Fiber; the parameters keep the upstream signature.
+local function reappearLayoutEffectsForDEVValidation(
+	_finishedRoot: FiberRoot,
+	_current: Fiber | nil,
+	finishedWork: Fiber
+): ()
+	if __DEV__ then
+		reappearLayoutEffects(finishedWork, false)
 	end
 end
 
@@ -2308,6 +2334,64 @@ function commitResetTextContent(current: Fiber): ()
 	resetTextContent(current.stateNode)
 end
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCommitWork.js#L4938-L4973
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L5286-L5334
+-- ROBLOX DEVIATION: The client port traverses only hook Fibers and
+-- identifies Activity using its public element type.
+local function disconnectPassiveEffect(fiber: Fiber): ()
+	if
+		fiber.tag == OffscreenComponent
+		and fiber.elementType == REACT_ACTIVITY_TYPE
+		and fiber.memoizedState ~= nil
+	then
+		return
+	end
+
+	if
+		fiber.tag == FunctionComponent
+		or fiber.tag == ForwardRef
+		or fiber.tag == SimpleMemoComponent
+		or fiber.tag == Block
+	then
+		commitHookEffectListUnmount(HookPassive, fiber, fiber.return_)
+	end
+
+	local child = fiber.child
+	while child ~= nil do
+		disconnectPassiveEffect(child)
+		child = child.sibling
+	end
+end
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCommitWork.js#L4158-L4321
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L4505-L4533
+-- ROBLOX DEVIATION: Atomic effects, cache pools, tracing, profiling,
+-- resources, and View Transitions are outside this client port.
+local function reconnectPassiveEffects(fiber: Fiber): ()
+	if
+		fiber.tag == OffscreenComponent
+		and fiber.elementType == REACT_ACTIVITY_TYPE
+		and fiber.memoizedState ~= nil
+	then
+		return
+	end
+
+	local child = fiber.child
+	while child ~= nil do
+		reconnectPassiveEffects(child)
+		child = child.sibling
+	end
+
+	if
+		fiber.tag == FunctionComponent
+		or fiber.tag == ForwardRef
+		or fiber.tag == SimpleMemoComponent
+		or fiber.tag == Block
+	then
+		commitHookEffectListMount(HookPassive, fiber)
+	end
+end
+
 local function commitPassiveUnmount(finishedWork: Fiber): ()
 	if
 		finishedWork.tag == OffscreenComponent
@@ -2317,37 +2401,9 @@ local function commitPassiveUnmount(finishedWork: Fiber): ()
 		local isHidden = finishedWork.memoizedState ~= nil
 		local wasHidden = current ~= nil and current.memoizedState ~= nil
 		if current ~= nil and isHidden and not wasHidden then
-			-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCommitWork.js#L4938-L4973
-			-- ROBLOX DEVIATION: The client port traverses only hook Fibers and
-			-- identifies Activity using its public element type.
-			local function disconnectPassiveEffects(fiber: Fiber): ()
-				if
-					fiber.tag == OffscreenComponent
-					and fiber.elementType == REACT_ACTIVITY_TYPE
-					and fiber.memoizedState ~= nil
-				then
-					return
-				end
-
-				if
-					fiber.tag == FunctionComponent
-					or fiber.tag == ForwardRef
-					or fiber.tag == SimpleMemoComponent
-					or fiber.tag == Block
-				then
-					commitHookEffectListUnmount(HookPassive, fiber, fiber.return_)
-				end
-
-				local child = fiber.child
-				while child ~= nil do
-					disconnectPassiveEffects(child)
-					child = child.sibling
-				end
-			end
-
 			local child = finishedWork.child
 			while child ~= nil do
-				disconnectPassiveEffects(child)
+				disconnectPassiveEffect(child)
 				child = child.sibling
 			end
 		end
@@ -2412,34 +2468,6 @@ local function commitPassiveMount(finishedRoot: FiberRoot, finishedWork: Fiber):
 		local isHidden = finishedWork.memoizedState ~= nil
 		local wasHidden = current ~= nil and current.memoizedState ~= nil
 		if not isHidden and wasHidden then
-			-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCommitWork.js#L4158-L4321
-			-- ROBLOX DEVIATION: Atomic effects, cache pools, tracing, profiling,
-			-- resources, and View Transitions are outside this client port.
-			local function reconnectPassiveEffects(fiber: Fiber): ()
-				if
-					fiber.tag == OffscreenComponent
-					and fiber.elementType == REACT_ACTIVITY_TYPE
-					and fiber.memoizedState ~= nil
-				then
-					return
-				end
-
-				local child = fiber.child
-				while child ~= nil do
-					reconnectPassiveEffects(child)
-					child = child.sibling
-				end
-
-				if
-					fiber.tag == FunctionComponent
-					or fiber.tag == ForwardRef
-					or fiber.tag == SimpleMemoComponent
-					or fiber.tag == Block
-				then
-					commitHookEffectListMount(HookPassive, fiber)
-				end
-			end
-
 			local child = finishedWork.child
 			while child ~= nil do
 				reconnectPassiveEffects(child)
@@ -2478,114 +2506,104 @@ local function commitPassiveMount(finishedRoot: FiberRoot, finishedWork: Fiber):
 	end
 end
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L5542-L5558
 function invokeLayoutEffectMountInDEV(fiber: Fiber): ()
-	if __DEV__ and enableDoubleInvokingEffects then
+	if __DEV__ then
+		-- We don't need to re-check StrictEffectsMode here.
+		-- This function is only called if that check has already passed.
 		if
 			fiber.tag == FunctionComponent
 			or fiber.tag == ForwardRef
 			or fiber.tag == SimpleMemoComponent
 			or fiber.tag == Block
 		then
-			invokeGuardedCallback(
-				nil,
+			-- ROBLOX DEVIATION: upstream commitHookEffectListMount captures its own
+			-- errors; React-Luau's does not, so the call is guarded here.
+			local ok, error_ = xpcall(
 				commitHookEffectListMount,
-				nil,
+				describeError,
 				bit32.bor(HookLayout, HookHasEffect),
 				fiber
 			)
-			if hasCaughtError() then
-				local mountError = clearCaughtError()
-				captureCommitPhaseError(fiber, fiber.return_, mountError)
+			if not ok then
+				captureCommitPhaseError(fiber, fiber.return_, error_)
 			end
-			return
+		elseif fiber.tag == ClassComponent then
+			local instance = fiber.stateNode
+			if typeof(instance.componentDidMount) == "function" then
+				safelyCallComponentDidMount(fiber, fiber.return_, instance)
+			end
 		end
-	elseif fiber.tag == ClassComponent then
-		local instance = fiber.stateNode
-		invokeGuardedCallback(nil, instance.componentDidMount, instance)
-		if hasCaughtError() then
-			local mountError = clearCaughtError()
-			captureCommitPhaseError(fiber, fiber.return_, mountError)
-		end
-		return
 	end
 end
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L5561-L5574
 function invokePassiveEffectMountInDEV(fiber: Fiber): ()
-	if __DEV__ and enableDoubleInvokingEffects then
+	if __DEV__ then
+		-- We don't need to re-check StrictEffectsMode here.
+		-- This function is only called if that check has already passed.
 		if
 			fiber.tag == FunctionComponent
 			or fiber.tag == ForwardRef
 			or fiber.tag == SimpleMemoComponent
 			or fiber.tag == Block
 		then
-			invokeGuardedCallback(
-				nil,
+			-- ROBLOX DEVIATION: upstream commitHookEffectListMount captures its own
+			-- errors; React-Luau's does not, so the call is guarded here.
+			local ok, error_ = xpcall(
 				commitHookEffectListMount,
-				nil,
+				describeError,
 				bit32.bor(HookPassive, HookHasEffect),
 				fiber
 			)
-			if hasCaughtError() then
-				local mountError = clearCaughtError()
-				captureCommitPhaseError(fiber, fiber.return_, mountError)
+			if not ok then
+				captureCommitPhaseError(fiber, fiber.return_, error_)
 			end
-			return
 		end
 	end
 end
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L5576-L5600
 function invokeLayoutEffectUnmountInDEV(fiber: Fiber): ()
-	if __DEV__ and enableDoubleInvokingEffects then
+	if __DEV__ then
+		-- We don't need to re-check StrictEffectsMode here.
+		-- This function is only called if that check has already passed.
 		if
 			fiber.tag == FunctionComponent
 			or fiber.tag == ForwardRef
 			or fiber.tag == SimpleMemoComponent
 			or fiber.tag == Block
 		then
-			invokeGuardedCallback(
-				nil,
-				commitHookEffectListUnmount,
-				nil,
+			commitHookEffectListUnmount(
 				bit32.bor(HookLayout, HookHasEffect),
 				fiber,
 				fiber.return_
 			)
-			if hasCaughtError() then
-				local unmountError = clearCaughtError()
-				captureCommitPhaseError(fiber, fiber.return_, unmountError)
+		elseif fiber.tag == ClassComponent then
+			local instance = fiber.stateNode
+			if typeof(instance.componentWillUnmount) == "function" then
+				safelyCallComponentWillUnmount(fiber, instance, fiber.return_)
 			end
-			return
 		end
-	elseif fiber.tag == ClassComponent then
-		local instance = fiber.stateNode
-		if typeof(instance.componentWillUnmount) == "function" then
-			safelyCallComponentWillUnmount(fiber, instance, fiber.return_)
-		end
-		return
 	end
 end
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L5602-L5618
 function invokePassiveEffectUnmountInDEV(fiber: Fiber): ()
-	if __DEV__ and enableDoubleInvokingEffects then
+	if __DEV__ then
+		-- We don't need to re-check StrictEffectsMode here.
+		-- This function is only called if that check has already passed.
 		if
 			fiber.tag == FunctionComponent
 			or fiber.tag == ForwardRef
 			or fiber.tag == SimpleMemoComponent
 			or fiber.tag == Block
 		then
-			invokeGuardedCallback(
-				nil,
-				commitHookEffectListUnmount,
-				nil,
+			commitHookEffectListUnmount(
 				bit32.bor(HookPassive, HookHasEffect),
 				fiber,
 				fiber.return_
 			)
-			if hasCaughtError() then
-				local unmountError = clearCaughtError()
-				captureCommitPhaseError(fiber, fiber.return_, unmountError)
-			end
-			return
 		end
 	end
 end
@@ -2607,6 +2625,10 @@ return {
 	invokeLayoutEffectUnmountInDEV = invokeLayoutEffectUnmountInDEV,
 	invokePassiveEffectMountInDEV = invokePassiveEffectMountInDEV,
 	invokePassiveEffectUnmountInDEV = invokePassiveEffectUnmountInDEV,
+	disappearLayoutEffectsForDEVValidation = disappearLayoutEffectsForDEVValidation,
+	reappearLayoutEffectsForDEVValidation = reappearLayoutEffectsForDEVValidation,
+	disconnectPassiveEffect = disconnectPassiveEffect,
+	reconnectPassiveEffects = reconnectPassiveEffects,
 	isSuspenseBoundaryBeingHidden = isSuspenseBoundaryBeingHidden,
 	recursivelyCommitLayoutEffects = recursivelyCommitLayoutEffects,
 }

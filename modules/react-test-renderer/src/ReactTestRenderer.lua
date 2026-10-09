@@ -84,6 +84,7 @@ type TestRendererOptions = {
 	-- ROBLOX TODO: upstream treats this as optional, somehow flowtype doesn't complain
 	createNodeMock: ((element: ReactElement<any, any>) -> any)?,
 	unstable_isConcurrent: boolean,
+	unstable_strictMode: boolean?,
 }
 
 type ReactTestRendererJSON = {
@@ -552,6 +553,8 @@ local function create(
 	-- ROBLOX deviation END
 	local createNodeMock = defaultTestOptions.createNodeMock
 	local isConcurrent = false
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-test-renderer/src/ReactTestRenderer.js#L497-L510
+	local isStrictMode = false
 
 	if typeof(options) == "table" and options ~= nil then
 		if typeof(options.createNodeMock) == "function" then
@@ -559,6 +562,9 @@ local function create(
 		end
 		if options.unstable_isConcurrent == true then
 			isConcurrent = true
+		end
+		if options.unstable_strictMode == true then
+			isStrictMode = true
 		end
 	end
 
@@ -574,7 +580,7 @@ local function create(
 	end
 
 	-- ROBLOX deviation: remove Fiber? type to silence analyze
-	local root = createContainer(container, rootArg, false, nil)
+	local root = createContainer(container, rootArg, false, nil, isStrictMode)
 
 	invariant(root ~= nil, "something went wrong")
 	updateContainer(element, root, nil, nil)

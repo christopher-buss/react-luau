@@ -42,7 +42,6 @@ local disableLegacyContext = ReactFeatureFlags.disableLegacyContext
 local enableDebugTracing = ReactFeatureFlags.enableDebugTracing
 local enableSchedulingProfiler = ReactFeatureFlags.enableSchedulingProfiler
 local warnAboutDeprecatedLifecycles = ReactFeatureFlags.warnAboutDeprecatedLifecycles
-local enableDoubleInvokingEffects = ReactFeatureFlags.enableDoubleInvokingEffects
 
 local ReactStrictModeWarnings = require(script.Parent["ReactStrictModeWarnings.new"])
 local isMounted = require(script.Parent.ReactFiberTreeReflection).isMounted
@@ -62,7 +61,9 @@ local resolveDefaultProps =
 	require(script.Parent["ReactFiberLazyComponent.new"]).resolveDefaultProps
 local ReactTypeOfMode = require(script.Parent.ReactTypeOfMode)
 local DebugTracingMode = ReactTypeOfMode.DebugTracingMode
-local StrictMode = ReactTypeOfMode.StrictMode
+local StrictLegacyMode = ReactTypeOfMode.StrictLegacyMode
+local StrictEffectsMode = ReactTypeOfMode.StrictEffectsMode
+local NoMode = ReactTypeOfMode.NoMode
 
 local enqueueUpdate = ReactUpdateQueue.enqueueUpdate
 local processUpdateQueue = ReactUpdateQueue.processUpdateQueue
@@ -208,7 +209,7 @@ local function applyDerivedStateFromProps<Props, State>(
 	if __DEV__ then
 		if
 			debugRenderPhaseSideEffectsForStrictMode
-			and bit32.band(workInProgress.mode, StrictMode) ~= 0
+			and bit32.band(workInProgress.mode, StrictLegacyMode) ~= 0
 		then
 			disableLogs()
 			-- Invoke the function an extra time to help detect side-effects.
@@ -382,7 +383,7 @@ function checkShouldComponentUpdate(
 		if __DEV__ then
 			if
 				debugRenderPhaseSideEffectsForStrictMode
-				and bit32.band(workInProgress.mode, StrictMode) ~= 0
+				and bit32.band(workInProgress.mode, StrictLegacyMode) ~= 0
 			then
 				disableLogs()
 				-- deviation: Pass instance so that the method receives self
@@ -737,7 +738,7 @@ local function constructClassInstance(workInProgress: Fiber, ctor: any, props: a
 	if __DEV__ then
 		if
 			debugRenderPhaseSideEffectsForStrictMode
-			and bit32.band(workInProgress.mode, StrictMode) ~= 0
+			and bit32.band(workInProgress.mode, StrictLegacyMode) ~= 0
 		then
 			disableLogs()
 			-- deviation: ctor will actually refer to a class component, we use the
@@ -1003,7 +1004,7 @@ local function mountClassInstance(
 			end
 		end
 
-		if bit32.band(workInProgress.mode, StrictMode) ~= 0 then
+		if bit32.band(workInProgress.mode, StrictLegacyMode) ~= 0 then
 			ReactStrictModeWarnings.recordLegacyContextWarning(workInProgress, instance)
 		end
 
@@ -1056,13 +1057,12 @@ local function mountClassInstance(
 		instance.state = workInProgress.memoizedState
 	end
 
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberClassComponent.js#L844-L849
 	if type(instance.componentDidMount) == "function" then
-		if __DEV__ and enableDoubleInvokingEffects then
-			workInProgress.flags =
-				bit32.bor(workInProgress.flags, bit32.bor(MountLayoutDev, Update))
-		else
-			workInProgress.flags = bit32.bor(workInProgress.flags, Update)
-		end
+		workInProgress.flags = bit32.bor(workInProgress.flags, Update)
+	end
+	if __DEV__ and bit32.band(workInProgress.mode, StrictEffectsMode) ~= NoMode then
+		workInProgress.flags = bit32.bor(workInProgress.flags, MountLayoutDev)
 	end
 end
 
@@ -1127,12 +1127,10 @@ function resumeMountClassInstance(
 		-- If an update was already in progress, we should schedule an Update
 		-- effect even though we're bailing out, so that cWU/cDU are called.
 		if type(instance.componentDidMount) == "function" then
-			if __DEV__ and enableDoubleInvokingEffects then
-				workInProgress.flags =
-					bit32.bor(workInProgress.flags, MountLayoutDev, Update)
-			else
-				workInProgress.flags = bit32.bor(workInProgress.flags, Update)
-			end
+			workInProgress.flags = bit32.bor(workInProgress.flags, Update)
+		end
+		if __DEV__ and bit32.band(workInProgress.mode, StrictEffectsMode) ~= NoMode then
+			workInProgress.flags = bit32.bor(workInProgress.flags, MountLayoutDev)
 		end
 		return false
 	end
@@ -1179,23 +1177,19 @@ function resumeMountClassInstance(
 			end
 		end
 		if type(instance.componentDidMount) == "function" then
-			if __DEV__ and enableDoubleInvokingEffects then
-				workInProgress.flags =
-					bit32.bor(workInProgress.flags, MountLayoutDev, Update)
-			else
-				workInProgress.flags = bit32.bor(workInProgress.flags, Update)
-			end
+			workInProgress.flags = bit32.bor(workInProgress.flags, Update)
+		end
+		if __DEV__ and bit32.band(workInProgress.mode, StrictEffectsMode) ~= NoMode then
+			workInProgress.flags = bit32.bor(workInProgress.flags, MountLayoutDev)
 		end
 	else
 		-- If an update was already in progress, we should schedule an Update
 		-- effect even though we're bailing out, so that cWU/cDU are called.
 		if type(instance.componentDidMount) == "function" then
-			if __DEV__ and enableDoubleInvokingEffects then
-				workInProgress.flags =
-					bit32.bor(workInProgress.flags, MountLayoutDev, Update)
-			else
-				workInProgress.flags = bit32.bor(workInProgress.flags, Update)
-			end
+			workInProgress.flags = bit32.bor(workInProgress.flags, Update)
+		end
+		if __DEV__ and bit32.band(workInProgress.mode, StrictEffectsMode) ~= NoMode then
+			workInProgress.flags = bit32.bor(workInProgress.flags, MountLayoutDev)
 		end
 
 		-- If shouldComponentUpdate returned false, we should still update the

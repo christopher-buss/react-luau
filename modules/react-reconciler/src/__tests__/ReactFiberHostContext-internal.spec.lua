@@ -69,7 +69,8 @@ describe("ReactFiberHostContext", function()
 			nil,
 			ConcurrentRoot,
 			false,
-			nil
+			nil,
+			false
 		)
 		Renderer.updateContainer(
 			React.createElement("a", nil, React.createElement("b")),
@@ -122,7 +123,7 @@ describe("ReactFiberHostContext", function()
 		})
 
 		local container =
-			Renderer.createContainer(rootContext, ConcurrentRoot, false, nil)
+			Renderer.createContainer(rootContext, ConcurrentRoot, false, nil, false)
 		Renderer.updateContainer(
 			React.createElement("a", nil, React.createElement("b")),
 			container,
