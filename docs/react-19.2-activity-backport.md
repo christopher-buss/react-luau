@@ -58,8 +58,8 @@ The renderer does not implement:
 - hydration, selective hydration, replay, or dehydrated Activity boundaries
 - DOM fragment refs, DOM events, hidden attributes, or persistence renderers
 - `use`, React 19 promise instrumentation, or sibling prewarming
-- `useInsertionEffect`, Strict Effects double invocation, cache pools,
-  transition tracing, profiler tracks, resources, View Transitions, or gestures
+- `useInsertionEffect`, cache pools, transition tracing, profiler tracks,
+  resources, View Transitions, or gestures
 - React Refresh behavior
 
 Those exclusions follow missing renderer or public capabilities. They do not
@@ -85,7 +85,7 @@ remove any client Activity behavior that React-Luau can express.
 | `ReactFiberCommitWork.js` layout, passive, class, and host traversals | `ReactFiberCommitWork.new.lua` | Adapted | Profiler, cache, tracing, resource, and View Transition cases are excluded. |
 | `ReactFiberSuspenseContext.js`, `ReactFiberThrow.js`, `ReactFiberUnwindWork.js` | Matching reconciler modules | Adapted | A hidden Activity Offscreen Fiber is the client capture boundary. |
 | `getComponentNameFromFiber.js`, `ReactFiberComponentStack.js` | Shared name lookup and `ReactFiberComponentStack.lua` | Adapted | The public Activity element type supplies the built-in frame. |
-| `ReactFiberWorkLoop.js` Strict Effects traversal | No Activity delta | Out of scope | React-Luau disables Strict Effects double invocation globally. |
+| `ReactFiberWorkLoop.js` Strict Effects traversal | `ReactFiberWorkLoop.new.lua` | Separate backport | See `react-19-strict-effects-backport.md`. |
 | `ReactFiberCommitWork.js` insertion-effect visibility behavior | No target | Out of scope | React-Luau does not expose `useInsertionEffect`. |
 | Hydration, reconciler Activity instances, DOM event replay, and host hydration config | No target | Out of scope | ReactRoblox has no hydration architecture. |
 
@@ -148,7 +148,7 @@ React-Luau cannot express.
 | Upstream suite and test | Port status | Deviation |
 | --- | --- | --- |
 | `ActivityStrictMode-test.js` — `should not cause infinite render loop when StrictMode is used with Suspense and synchronous set states` | Direct | Does not require Strict Effects. |
-| The other three `ActivityStrictMode-test.js` cases | Out of scope | They require Strict Effects double invocation and, for one case, sibling prewarming. |
+| The other four `ActivityStrictMode-test.js` cases | Separate backport | Ported with Strict Effects; see `react-19-strict-effects-backport.md`. |
 | `ReactErrorStacks-test.js` — `includes built-in for Activity` | Adapted | Use React-Luau's existing component-stack assertion seam. |
 | `ReactLazy-test.internal.js` — `throws with a useful error when wrapping Activity with lazy()` | Adapted | Use the existing Jest-Lua lazy suite and error formatting. |
 | `storeComponentFilters-test.js` — `should filter Activity` | Base behavior | Activity intentionally uses the already-filtered Offscreen tag in this no-hydration renderer. |
