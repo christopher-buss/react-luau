@@ -138,7 +138,7 @@ local debugRenderPhaseSideEffectsForStrictMode =
 	ReactFeatureFlags.debugRenderPhaseSideEffectsForStrictMode
 
 local ReactTypeOfMode = require(script.Parent.ReactTypeOfMode)
-local StrictMode = ReactTypeOfMode.StrictMode
+local StrictLegacyMode = ReactTypeOfMode.StrictLegacyMode
 -- local ReactFiberWorkLoop = require(script.Parent["ReactFiberWorkLoop.new"])
 local markSkippedUpdateLanes =
 	require(script.Parent.ReactFiberWorkInProgress).markSkippedUpdateLanes
@@ -436,7 +436,7 @@ local function getStateFromUpdate<State>(
 			if __DEV__ then
 				if
 					debugRenderPhaseSideEffectsForStrictMode
-					and bit32.band(workInProgress.mode, StrictMode) ~= 0
+					and bit32.band(workInProgress.mode, StrictLegacyMode) ~= 0
 				then
 					disableLogs()
 					-- ROBLOX deviation: YOLO flag for disabling pcall
@@ -482,7 +482,7 @@ local function getStateFromUpdate<State>(
 			if __DEV__ then
 				if
 					debugRenderPhaseSideEffectsForStrictMode
-					and bit32.band(workInProgress.mode, StrictMode) ~= 0
+					and bit32.band(workInProgress.mode, StrictLegacyMode) ~= 0
 				then
 					disableLogs()
 					-- ROBLOX deviation: YOLO flag for disabling pcall

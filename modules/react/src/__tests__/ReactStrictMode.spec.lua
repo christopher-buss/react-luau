@@ -972,3 +972,64 @@ describe("context legacy", function()
 		--     ReactNoop.render(React.createElement(Root))
 	end)
 end)
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react/src/__tests__/ReactStrictMode-test.js#L1058-L1296
+-- ROBLOX DEVIATION: Only the Strict Effects case of this React 19 group is
+-- ported. The render and class cases need React 19's console behavior, which
+-- React-Luau does not implement. ReactRoblox replaces ReactDOMClient.
+describe("context legacy", function()
+	describe("console logs logging", function()
+		local ReactRoblox
+		local console
+
+		beforeEach(function()
+			jest.resetModules()
+			React = require(Packages.React)
+			ReactRoblox = require(Packages.Dev.ReactRoblox)
+			console = require(Packages.Shared).console
+
+			-- These tests are specifically testing console.log.
+			jest.spyOn(console, "log").mockImplementation(function() end)
+		end)
+
+		JestGlobals.afterEach(function()
+			console.log.mockRestore()
+		end)
+
+		it("does not disable logs for effect double invoke", function()
+			local create = 0
+			local cleanup = 0
+			local function Foo()
+				React.useEffect(function()
+					create += 1
+					console.log("foo create " .. create)
+					return function()
+						cleanup += 1
+						console.log("foo cleanup " .. cleanup)
+					end
+				end)
+				return nil
+			end
+
+			local container = Instance.new("Folder")
+			local root = ReactRoblox.createRoot(container)
+			ReactRoblox.act(function()
+				root:render(
+					React.createElement(React.StrictMode, nil, React.createElement(Foo))
+				)
+			end)
+			jestExpect(create).toBe(if ReactGlobals.__DEV__ then 2 else 1)
+			jestExpect(cleanup).toBe(if ReactGlobals.__DEV__ then 1 else 0)
+			jestExpect(console.log).toHaveBeenCalledTimes(
+				if ReactGlobals.__DEV__ then 3 else 1
+			)
+			-- Note: we should display the first log because otherwise
+			-- there is a risk of suppressing warnings when they happen,
+			-- and on the next render they'd get deduplicated and ignored.
+			jestExpect(console.log).toHaveBeenCalledWith("foo create 1")
+			if ReactGlobals.__DEV__ then
+				jestExpect(console.log).toHaveBeenCalledWith("foo cleanup 1")
+			end
+		end)
+	end)
+end)

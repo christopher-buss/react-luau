@@ -12,8 +12,12 @@
 export type TypeOfMode = number
 
 return {
-	NoMode = 0b00000,
-	StrictMode = 0b00001,
+	NoMode = 0b000000,
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactTypeOfMode.js#L17-L18
+	-- ROBLOX DEVIATION: React-Luau keeps its React 17 bit layout, so the two
+	-- strict bits take the old StrictMode bit and the next free bit.
+	StrictLegacyMode = 0b000001,
+	StrictEffectsMode = 0b100000,
 	-- TODO: Remove BlockingMode and ConcurrentMode by reading from the root
 	-- tag instead
 	BlockingMode = 0b00010,

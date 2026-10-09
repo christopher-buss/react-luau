@@ -145,7 +145,7 @@ local ReactTypeOfMode = require(script.Parent.ReactTypeOfMode)
 local ConcurrentMode = ReactTypeOfMode.ConcurrentMode
 local NoMode = ReactTypeOfMode.NoMode
 local ProfileMode = ReactTypeOfMode.ProfileMode
-local StrictMode = ReactTypeOfMode.StrictMode
+local StrictLegacyMode = ReactTypeOfMode.StrictLegacyMode
 local BlockingMode = ReactTypeOfMode.BlockingMode
 local ReactFiberHostConfig = require(script.Parent.ReactFiberHostConfig)
 local shouldSetTextContent = ReactFiberHostConfig.shouldSetTextContent
@@ -411,7 +411,7 @@ local function updateForwardRef(
 			renderWithHooks(current, workInProgress, render, nextProps, ref, renderLanes)
 		if
 			debugRenderPhaseSideEffectsForStrictMode
-			and bit32.band(workInProgress.mode, StrictMode) ~= 0
+			and bit32.band(workInProgress.mode, StrictLegacyMode) ~= 0
 		then
 			disableLogs()
 			local ok, result = xpcall(
@@ -908,7 +908,7 @@ function updateFunctionComponent(
 		)
 		if
 			debugRenderPhaseSideEffectsForStrictMode
-			and bit32.band(workInProgress.mode, StrictMode) ~= 0
+			and bit32.band(workInProgress.mode, StrictLegacyMode) ~= 0
 		then
 			disableLogs()
 			local ok, result = xpcall(
@@ -1174,7 +1174,7 @@ function finishClassComponent(
 			nextChildren = instance:render()
 			if
 				debugRenderPhaseSideEffectsForStrictMode
-				and bit32.band(workInProgress.mode, StrictMode) ~= 0
+				and bit32.band(workInProgress.mode, StrictLegacyMode) ~= 0
 			then
 				disableLogs()
 				-- deviation: Pass instance so that render can access self
@@ -1597,7 +1597,7 @@ local function mountIndeterminateComponent(
 			end
 		end
 
-		if bit32.band(workInProgress.mode, StrictMode) ~= 0 then
+		if bit32.band(workInProgress.mode, StrictLegacyMode) ~= 0 then
 			ReactStrictModeWarnings.recordLegacyContextWarning(workInProgress)
 		end
 
@@ -1734,7 +1734,7 @@ local function mountIndeterminateComponent(
 
 			if
 				debugRenderPhaseSideEffectsForStrictMode
-				and bit32.band(workInProgress.mode, StrictMode) ~= 0
+				and bit32.band(workInProgress.mode, StrictLegacyMode) ~= 0
 			then
 				disableLogs()
 				local ok, result = xpcall(
@@ -3286,7 +3286,9 @@ function remountFiber(
 			table.insert(deletions, current)
 		end
 
-		newWorkInProgress.flags = bit32.bor(newWorkInProgress.flags, Placement)
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberBeginWork.js#L3927
+		newWorkInProgress.flags =
+			bit32.bor(newWorkInProgress.flags, Placement, ReactFiberFlags.PlacementDEV)
 
 		-- Restart work from the new fiber.
 		return newWorkInProgress

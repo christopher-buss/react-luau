@@ -69,10 +69,11 @@ local enableDebugTracing: boolean? = ReactFeatureFlags.enableDebugTracing
 local enableSchedulingProfiler: boolean? = ReactFeatureFlags.enableSchedulingProfiler
 local enableNewReconciler: boolean? = ReactFeatureFlags.enableNewReconciler
 local enableTransitionTracing: boolean = ReactFeatureFlags.enableTransitionTracing
-local enableDoubleInvokingEffects = ReactFeatureFlags.enableDoubleInvokingEffects
 
 -- local ReactTypeOfMode = require(script.Parent.ReactTypeOfMode)
 local DebugTracingMode = require(script.Parent.ReactTypeOfMode).DebugTracingMode
+local StrictEffectsMode = require(script.Parent.ReactTypeOfMode).StrictEffectsMode
+local NoMode = require(script.Parent.ReactTypeOfMode).NoMode
 local NoLane = ReactFiberLane.NoLane
 local NoLanes = ReactFiberLane.NoLanes
 local isSubsetOfLanes = ReactFiberLane.isSubsetOfLanes
@@ -463,7 +464,8 @@ end
 exports.bailoutHooks = function(current: Fiber, workInProgress: Fiber, lanes: Lanes)
 	-- ROBLOX performance TODO: return non-nil updateQueue object to the ReactUpdateQUeue pool
 	workInProgress.updateQueue = current.updateQueue
-	if __DEV__ and enableDoubleInvokingEffects then
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberHooks.js#L913-L925
+	if __DEV__ and bit32.band(workInProgress.mode, StrictEffectsMode) ~= NoMode then
 		workInProgress.flags = bit32.band(
 			workInProgress.flags,
 			bit32.bnot(
@@ -1341,7 +1343,11 @@ local function mountEffect(
 		end
 	end
 
-	if __DEV__ and enableDoubleInvokingEffects then
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberHooks.js#L2699-L2718
+	if
+		__DEV__
+		and bit32.band(currentlyRenderingFiber.mode, StrictEffectsMode) ~= NoMode
+	then
 		mountEffectImpl(
 			bit32.bor(MountPassiveDevEffect, PassiveEffect, PassiveStaticEffect),
 			HookPassive,
@@ -1378,7 +1384,11 @@ local function mountLayoutEffect(
 	create: (() -> ()) | (() -> () -> ()),
 	deps: Array<any>?
 ): ()
-	if __DEV__ and enableDoubleInvokingEffects then
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberHooks.js#L2795-L2808
+	if
+		__DEV__
+		and bit32.band(currentlyRenderingFiber.mode, StrictEffectsMode) ~= NoMode
+	then
 		mountEffectImpl(
 			bit32.bor(MountLayoutDevEffect, UpdateEffect),
 			HookLayout,
@@ -1460,7 +1470,11 @@ function mountImperativeHandle<T>(
 	-- TODO: If deps are provided, should we skip comparing the ref itself?
 	local effectDeps = if deps ~= nil then Array.concat(deps, { ref }) else nil
 
-	if __DEV__ and enableDoubleInvokingEffects then
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberHooks.js#L2871-L2878
+	if
+		__DEV__
+		and bit32.band(currentlyRenderingFiber.mode, StrictEffectsMode) ~= NoMode
+	then
 		return mountEffectImpl(
 			bit32.bor(MountLayoutDevEffect, UpdateEffect),
 			HookLayout,
