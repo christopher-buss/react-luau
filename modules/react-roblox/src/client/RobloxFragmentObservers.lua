@@ -294,11 +294,12 @@ local function createObserver(callback, intersectionOptions)
 			end)
 		)
 		local ancestor = target
+		local geometryProperties = if intersectionOptions ~= nil
+			then { "AbsoluteSize", "AbsolutePosition", "AbsoluteRotation" }
+			else { "AbsoluteSize" }
 		while ancestor ~= nil do
 			if ancestor:IsA("GuiBase2d") then
-				for _, property in
-					{ "AbsoluteSize", "AbsolutePosition", "AbsoluteRotation" }
-				do
+				for _, property in geometryProperties do
 					table.insert(
 						state.connections,
 						ancestor:GetPropertyChangedSignal(property):Connect(changed)

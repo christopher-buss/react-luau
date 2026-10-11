@@ -1592,8 +1592,15 @@ function commitUnmount(
 		end
 		if current.stateNode ~= nil then
 			-- ROBLOX DEVIATION: Empty native handles own cancellation and observer
-			-- resources, so deletion disposes them in addition to child effects.
-			ReactFiberHostConfig.destroyFragmentInstance(current.stateNode)
+			-- resources. Capture user disposal errors so native deletion completes.
+			local ok, cleanupError = xpcall(
+				ReactFiberHostConfig.destroyFragmentInstance,
+				describeError,
+				current.stateNode
+			)
+			if not ok then
+				captureCommitPhaseError(current, nearestMountedAncestor, cleanupError)
+			end
 		end
 		return
 	elseif current.tag == HostPortal then
@@ -2178,8 +2185,12 @@ local function commitDeletion(
 	finishedRoot: FiberRoot,
 	current: Fiber,
 	nearestMountedAncestor: Fiber,
-	renderPriorityLevel: ReactPriorityLevel
+	renderPriorityLevel: ReactPriorityLevel,
+	reportError
 ): ()
+	-- ROBLOX DEVIATION: Inject the commit reporter before recursive deletion;
+	-- user cleanup errors must not depend on a preceding layout traversal.
+	captureCommitPhaseError = reportError
 	-- ROBLOX performance? supportsMutation always true, eliminate cmp on hot path
 	-- if supportsMutation then
 	-- Recursively delete all host nodes from the parent.

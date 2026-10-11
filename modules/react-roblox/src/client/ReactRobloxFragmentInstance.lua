@@ -4,6 +4,7 @@
 -- or dispatchEvent. Callbacks receive the source Instance before native args.
 local Packages = script.Parent.Parent.Parent
 local Geometry = require(script.Parent.RobloxFragmentGeometry)
+local describeError = require(Packages.Shared).describeError
 export type ClientRect = Geometry.ClientRect
 export type FocusOptions = { channel: ("auto" | "text" | "selection")? }
 export type TreePosition = {
@@ -130,7 +131,8 @@ local function attachListener(instance, registration)
 	connection = instance[registration.event]:Connect(function(...)
 		-- ROBLOX DEVIATION: Membership removal invalidates deferred delivery.
 		if
-			not registration.active
+			registration.fragment._deleted
+			or not registration.active
 			or registration.connections[instance] ~= connection
 		then
 			return
@@ -346,9 +348,24 @@ end
 -- disposal even for empty Fragments. Ref detachment and hiding retain handles.
 function exports.destroyFragmentInstance(fragment)
 	fragment._deleted = true
+	local firstError = nil
+	local function dispose(cleanup, ...)
+		local ok, cleanupError = xpcall(cleanup, describeError, ...)
+		if not ok and firstError == nil then
+			firstError = cleanupError
+		end
+		return ok
+	end
 	while #fragment._eventListeners > 0 do
 		local registration = fragment._eventListeners[1]
-		fragment:removeEventListener(registration.event, registration.listener)
+		-- ROBLOX DEVIATION: Foreign cancellation cleanup must not interrupt
+		-- disposal of the remaining native subscriptions or host deletion.
+		dispose(
+			fragment.removeEventListener,
+			fragment,
+			registration.event,
+			registration.listener
+		)
 	end
 	for instance in fragment._members do
 		removeHandle(instance, fragment)
@@ -359,17 +376,39 @@ function exports.destroyFragmentInstance(fragment)
 	for observer, targets in fragment._observers do
 		fragment._observers[observer] = nil
 		fragment._retiredObservers[observer] = true
+		local released = true
 		if observer.releaseOwnerAfterExit ~= nil then
-			observer:releaseOwnerAfterExit(fragment)
-		else
+			released = dispose(observer.releaseOwnerAfterExit, observer, fragment)
+		end
+		if observer.releaseOwnerAfterExit == nil or not released then
 			for instance in targets do
-				if observer.unobserveAfterExit ~= nil then
-					observer:unobserveAfterExit(instance, fragment)
+				if observer.unobserveAfterExit ~= nil and released then
+					if
+						not dispose(
+							observer.unobserveAfterExit,
+							observer,
+							instance,
+							fragment
+						)
+					then
+						released = false
+						dispose(observer.unobserve, observer, instance, fragment)
+					end
 				else
-					observer:unobserve(instance, fragment)
+					if not dispose(observer.unobserve, observer, instance, fragment) then
+						released = false
+					end
 				end
 			end
 		end
+		-- ROBLOX DEVIATION: If an external composite exit hook fails, release
+		-- known targets independently and try its owner cleanup as a final fallback.
+		if not released and observer.releaseOwner ~= nil then
+			dispose(observer.releaseOwner, observer, fragment)
+		end
+	end
+	if firstError ~= nil then
+		error(firstError, 0)
 	end
 end
 FragmentInstance.getRootNode = require(script.Parent.FragmentQueries).getRootNode

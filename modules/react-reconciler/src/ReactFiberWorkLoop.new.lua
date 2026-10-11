@@ -2611,7 +2611,8 @@ mod.commitMutationEffects = function(
 					root,
 					childToDelete,
 					fiber,
-					renderPriorityLevel
+					renderPriorityLevel,
+					exports.captureCommitPhaseError
 				)
 				if not ok then
 					exports.captureCommitPhaseError(childToDelete, fiber, error_)

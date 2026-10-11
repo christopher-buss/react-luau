@@ -24,22 +24,14 @@ function exports.getClientRects(fragment)
 	)
 	return table.freeze(rects)
 end
-local function position(
-	preceding,
-	following,
-	contains,
-	containedBy,
-	disconnected,
-	implementationSpecific
-)
-	return table.freeze({
-		preceding = preceding,
-		following = following,
-		contains = contains,
-		containedBy = containedBy,
-		disconnected = disconnected,
-		implementationSpecific = implementationSpecific,
-	})
+local function position(flags)
+	flags.preceding = flags.preceding == true
+	flags.following = flags.following == true
+	flags.contains = flags.contains == true
+	flags.containedBy = flags.containedBy == true
+	flags.disconnected = flags.disconnected == true
+	flags.implementationSpecific = flags.implementationSpecific == true
+	return table.freeze(flags)
 end
 local function sameFiber(first, second)
 	return first == second or first.alternate == second or second.alternate == first
@@ -103,7 +95,7 @@ function exports.compareTreePosition(fragment, other)
 	local reflection = require(Packages.ReactReconciler.ReactFiberTreeReflection)
 	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js#L3586-L3592
 	if fragment._deleted or not reflection.isFiberMounted(fragment._fragmentFiber) then
-		return position(false, false, false, false, true, false)
+		return position({ disconnected = true })
 	end
 	local otherFiber
 	if typeof(other) == "Instance" then
@@ -115,16 +107,16 @@ function exports.compareTreePosition(fragment, other)
 			"compareTreePosition requires an Instance or FragmentInstance"
 		)
 		if other._deleted or not reflection.isFiberMounted(other._fragmentFiber) then
-			return position(false, false, false, false, true, false)
+			return position({ disconnected = true })
 		end
 		otherFiber = other._fragmentFiber
 	end
 	if otherFiber == nil then
-		return position(false, false, false, false, true, true)
+		return position({ disconnected = true, implementationSpecific = true })
 	end
 	local fiber = fragment._fragmentFiber
 	if sameFiber(fiber, otherFiber) then
-		return position(false, false, false, false, false, false)
+		return position({})
 	end
 	-- ROBLOX DEVIATION: Logical containment survives portals. Flag escaped
 	-- physical ancestry and distinct portal owners without inventing DOM order.
@@ -133,24 +125,23 @@ function exports.compareTreePosition(fragment, other)
 		then other
 		else physicalParent(otherFiber, reflection)
 	if reflection.doesFiberContain(otherFiber, fiber) then
-		return position(
-			true,
-			false,
-			true,
-			false,
-			false,
-			not physicallyContains(otherPhysicalTarget, ownPhysicalParent)
-		)
+		return position({
+			preceding = true,
+			contains = true,
+			implementationSpecific = not physicallyContains(
+				otherPhysicalTarget,
+				ownPhysicalParent
+			),
+		})
 	end
 	if reflection.doesFiberContain(fiber, otherFiber) then
-		return position(
-			false,
-			false,
-			false,
-			true,
-			false,
-			not physicallyContains(ownPhysicalParent, otherPhysicalTarget)
-		)
+		return position({
+			containedBy = true,
+			implementationSpecific = not physicallyContains(
+				ownPhysicalParent,
+				otherPhysicalTarget
+			),
+		})
 	end
 	local ownPortal, otherPortal = portalBoundary(fiber), portalBoundary(otherFiber)
 	local implementationSpecific = ownPortal ~= otherPortal
@@ -158,7 +149,7 @@ function exports.compareTreePosition(fragment, other)
 	local ownPath, otherPath = ancestorPath(fiber), ancestorPath(otherFiber)
 	local ownIndex, otherIndex = #ownPath, #otherPath
 	if not sameFiber(ownPath[ownIndex], otherPath[otherIndex]) then
-		return position(false, false, false, false, true, true)
+		return position({ disconnected = true, implementationSpecific = true })
 	end
 	while sameFiber(ownPath[ownIndex], otherPath[otherIndex]) do
 		ownIndex -= 1
@@ -167,10 +158,16 @@ function exports.compareTreePosition(fragment, other)
 	local sibling = ownPath[ownIndex + 1].child
 	while sibling ~= nil do
 		if sameFiber(sibling, ownPath[ownIndex]) then
-			return position(false, true, false, false, false, implementationSpecific)
+			return position({
+				following = true,
+				implementationSpecific = implementationSpecific,
+			})
 		end
 		if sameFiber(sibling, otherPath[otherIndex]) then
-			return position(true, false, false, false, false, implementationSpecific)
+			return position({
+				preceding = true,
+				implementationSpecific = implementationSpecific,
+			})
 		end
 		sibling = sibling.sibling
 	end

@@ -33,6 +33,101 @@ describe("Fragment native event ownership", function()
 		end)
 		parent:Destroy()
 	end)
+	it("finishes native deletion when an external cancellation cleanup throws", function()
+		local fragment = fragmentRef.current
+		local firstHost, secondHost = firstRef.current, secondRef.current
+		local secondReleased = false
+		local delivered = false
+		local firstSignal = { aborted = false }
+		function firstSignal:subscribe(_callback)
+			return function()
+				error("cancellation cleanup failed")
+			end
+		end
+		local secondSignal = { aborted = false }
+		function secondSignal:subscribe(_callback)
+			return function()
+				secondReleased = true
+			end
+		end
+		fragment:addEventListener("Event", function()
+			delivered = true
+		end, { signal = firstSignal })
+		fragment:addEventListener("Event", function()
+			delivered = true
+		end, { signal = secondSignal })
+		expect(function()
+			ReactRoblox.act(function()
+				root:render(nil)
+			end)
+		end).toThrow("cancellation cleanup failed")
+		expect(secondReleased).toBe(true)
+		expect(parent:GetChildren()).toEqual({})
+		expect(ReactRoblox.getFragmentInstances(firstHost)).toEqual({})
+		expect(ReactRoblox.getFragmentInstances(secondHost)).toEqual({})
+		firstHost:Fire()
+		secondHost:Fire()
+		task.wait()
+		expect(delivered).toBe(false)
+	end)
+	it("finishes observer deletion when an external release hook throws", function()
+		ReactRoblox.act(function()
+			root:render(
+				React.createElement(
+					React.Fragment,
+					{ ref = fragmentRef },
+					React.createElement("Frame", { ref = firstRef }),
+					React.createElement("Frame", { ref = secondRef })
+				)
+			)
+		end)
+		local fragment = fragmentRef.current
+		local firstHost, secondHost = firstRef.current, secondRef.current
+		local observed = {}
+		local firstRemoval = true
+		local observer = {}
+		function observer:observe(target)
+			observed[target] = true
+		end
+		function observer:unobserve(target)
+			observed[target] = nil
+			if firstRemoval then
+				firstRemoval = false
+				error("target cleanup failed")
+			end
+		end
+		function observer:unobserveAfterExit(target)
+			self:unobserve(target)
+		end
+		function observer:releaseOwner(_owner)
+			for target in observed do
+				self:unobserve(target)
+			end
+		end
+		function observer:releaseOwnerAfterExit(_owner)
+			error("observer release failed")
+		end
+		local otherObserved = {}
+		local otherObserver = {}
+		function otherObserver:observe(target)
+			otherObserved[target] = true
+		end
+		function otherObserver:unobserve(target)
+			otherObserved[target] = nil
+		end
+		fragment:observeUsing(observer)
+		fragment:observeUsing(otherObserver)
+		expect(function()
+			ReactRoblox.act(function()
+				root:render(nil)
+			end)
+		end).toThrow("observer release failed")
+		expect(observed).toEqual({})
+		expect(otherObserved).toEqual({})
+		expect(parent:GetChildren()).toEqual({})
+		expect(ReactRoblox.getFragmentInstances(firstHost)).toEqual({})
+		expect(ReactRoblox.getFragmentInstances(secondHost)).toEqual({})
+	end)
 	it("permits re-registration after the cancellation boundary throws", function()
 		local logs = {}
 		local function listener(host, value)
