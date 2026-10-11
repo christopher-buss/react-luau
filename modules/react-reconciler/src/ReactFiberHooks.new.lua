@@ -93,6 +93,7 @@ local PassiveStaticEffect = ReactFiberFlags.PassiveStatic
 local StoreConsistency = ReactFiberFlags.StoreConsistency
 local MountLayoutDevEffect = ReactFiberFlags.MountLayoutDev
 local MountPassiveDevEffect = ReactFiberFlags.MountPassiveDev
+local HookNoFlags = ReactHookEffectTags.NoFlags
 local HookHasEffect = ReactHookEffectTags.HasEffect
 local HookLayout = ReactHookEffectTags.Layout
 local HookPassive = ReactHookEffectTags.Passive
@@ -1541,8 +1542,8 @@ local function updateSyncExternalStore<T>(
 	updateEffect(function()
 		return subscribeToStore(fiber, inst, subscribe)
 	end, { subscribe } :: Array<any>)
-	if
-		inst.getSnapshot ~= getSnapshot
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/2860e00cf8780dc2d59b87f3ff28ac88b908660f/packages/react-reconciler/src/ReactFiberHooks.js#L1778-L1814
+	local storeChanged = inst.getSnapshot ~= getSnapshot
 		or snapshotChanged
 		or (
 			workInProgressHook ~= nil
@@ -1550,13 +1551,20 @@ local function updateSyncExternalStore<T>(
 					(workInProgressHook.memoizedState :: Effect).tag,
 					HookHasEffect
 				)
-				~= 0
+				~= HookNoFlags
 		)
-	then
-		fiber.flags = bit32.bor(fiber.flags, PassiveEffect)
-		pushEffect(bit32.bor(HookHasEffect, HookPassive), function()
+	-- ROBLOX DEVIATION: React 17's pushEffect stores the create callback
+	-- directly instead of allocating React 19's separate effect instance.
+	pushEffect(
+		if storeChanged then bit32.bor(HookHasEffect, HookPassive) else HookPassive,
+		function()
 			updateStoreInstance(fiber, inst, nextSnapshot, getSnapshot)
-		end, nil, nil)
+		end,
+		nil,
+		nil
+	)
+	if storeChanged then
+		fiber.flags = bit32.bor(fiber.flags, PassiveEffect)
 		if not getIsHydrating() then
 			invariant(
 				getWorkInProgressRoot() ~= nil,
