@@ -602,6 +602,200 @@ describe("ReactSuspenseEffectsSemantics", function()
 			})
 		end)
 
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/1d68bce19c9409ed70604d1d16b70b68ce71dc4a/packages/react-reconciler/src/__tests__/ReactSuspenseEffectsSemantics-test.js#L1404-L1502
+		-- ROBLOX DEVIATION: createElement replaces JSX, ReactNoop.act replaces
+		-- async act, and toHaveYielded replaces assertLog. The existing controllable
+		-- thenable replaces getCacheForType; this case leaves both records pending.
+		-- ROBLOX DEVIATION: React 17 delays this concurrent fallback commit;
+		-- the exact insertion/layout/passive and retry log fails with or without
+		-- the visibility fix. Preserve the complete contract for a timing backport.
+		it.skip(
+			"should wait to reveal an inner child when inner one reveals first",
+			function()
+				local Scheduler = require(Packages.Scheduler)
+				local readText = createTextResource()
+				local function Text(props)
+					Scheduler.unstable_yieldValue("Text:" .. props.text .. " render")
+					React.useInsertionEffect(function()
+						Scheduler.unstable_yieldValue(
+							"Text:" .. props.text .. " create insertion"
+						)
+						return function()
+							Scheduler.unstable_yieldValue(
+								"Text:" .. props.text .. " destroy insertion"
+							)
+						end
+					end, {})
+					React.useLayoutEffect(function()
+						Scheduler.unstable_yieldValue(
+							"Text:" .. props.text .. " create layout"
+						)
+						return function()
+							Scheduler.unstable_yieldValue(
+								"Text:" .. props.text .. " destroy layout"
+							)
+						end
+					end, {})
+					React.useEffect(function()
+						Scheduler.unstable_yieldValue(
+							"Text:" .. props.text .. " create passive"
+						)
+						return function()
+							Scheduler.unstable_yieldValue(
+								"Text:" .. props.text .. " destroy passive"
+							)
+						end
+					end, {})
+					return React.createElement(
+						"span",
+						{ prop = props.text },
+						props.children
+					)
+				end
+				local function AsyncText(props)
+					Scheduler.unstable_yieldValue("Suspend:" .. props.text)
+					readText(props.text)
+					Scheduler.unstable_yieldValue("AsyncText:" .. props.text .. " render")
+					React.useLayoutEffect(function()
+						Scheduler.unstable_yieldValue(
+							"AsyncText:" .. props.text .. " create layout"
+						)
+						return function()
+							Scheduler.unstable_yieldValue(
+								"AsyncText:" .. props.text .. " destroy layout"
+							)
+						end
+					end, {})
+					React.useEffect(function()
+						Scheduler.unstable_yieldValue(
+							"AsyncText:" .. props.text .. " create passive"
+						)
+						return function()
+							Scheduler.unstable_yieldValue(
+								"AsyncText:" .. props.text .. " destroy passive"
+							)
+						end
+					end, {})
+					return React.createElement(
+						"span",
+						{ prop = props.text },
+						props.children
+					)
+				end
+				local function App(props)
+					return React.createElement(
+						React.Suspense,
+						{
+							fallback = React.createElement(
+								Text,
+								{ text = "OuterFallback" }
+							),
+							name = "Outer",
+						},
+						React.createElement(React.Suspense, {
+							fallback = React.createElement(
+								Text,
+								{ text = "InnerFallback" }
+							),
+							name = "Inner",
+						}, React.createElement("div", nil, props.innerChildren)),
+						props.outerChildren
+					)
+				end
+				ReactNoop.act(function()
+					ReactNoop.render(React.createElement(App))
+				end)
+				jestExpect(Scheduler).toHaveYielded({})
+				jestExpect(ReactNoop).toMatchRenderedOutput(React.createElement("div"))
+				ReactNoop.act(function()
+					ReactNoop.render(React.createElement(App, {
+						innerChildren = React.createElement(
+							AsyncText,
+							{ text = "InnerAsync" }
+						),
+					}))
+				end)
+				jestExpect(Scheduler).toHaveYielded({
+					"Suspend:InnerAsync",
+					"Text:InnerFallback render",
+					"Text:InnerFallback create insertion",
+					"Text:InnerFallback create layout",
+					"Text:InnerFallback create passive",
+					"Suspend:InnerAsync",
+				})
+				jestExpect(ReactNoop).toMatchRenderedOutput(
+					React.createElement(
+						React.Fragment,
+						nil,
+						React.createElement("div", { hidden = true }),
+						React.createElement("span", { prop = "InnerFallback" })
+					)
+				)
+				ReactNoop.act(function()
+					ReactNoop.render(React.createElement(App, {
+						outerChildren = React.createElement(
+							AsyncText,
+							{ text = "OuterAsync" }
+						),
+						innerChildren = React.createElement(
+							AsyncText,
+							{ text = "InnerAsync" }
+						),
+					}))
+				end)
+				jestExpect(Scheduler).toHaveYielded({
+					"Suspend:InnerAsync",
+					"Text:InnerFallback render",
+					"Suspend:OuterAsync",
+					"Text:OuterFallback render",
+					"Text:InnerFallback destroy layout",
+					"Text:OuterFallback create insertion",
+					"Text:OuterFallback create layout",
+					"Text:OuterFallback create passive",
+					"Suspend:InnerAsync",
+					"Text:InnerFallback render",
+					"Suspend:OuterAsync",
+				})
+				jestExpect(ReactNoop).toMatchRenderedOutput(
+					React.createElement(
+						React.Fragment,
+						nil,
+						React.createElement("div", { hidden = true }),
+						React.createElement(
+							"span",
+							{ prop = "InnerFallback", hidden = true }
+						),
+						React.createElement("span", { prop = "OuterFallback" })
+					)
+				)
+				ReactNoop.act(function()
+					ReactNoop.render(React.createElement(App, {
+						outerChildren = React.createElement(
+							AsyncText,
+							{ text = "OuterAsync" }
+						),
+					}))
+				end)
+				jestExpect(Scheduler).toHaveYielded({
+					"Suspend:OuterAsync",
+					"Text:OuterFallback render",
+					"Suspend:OuterAsync",
+				})
+				jestExpect(ReactNoop).toMatchRenderedOutput(
+					React.createElement(
+						React.Fragment,
+						nil,
+						React.createElement("div", { hidden = true }),
+						React.createElement(
+							"span",
+							{ prop = "InnerFallback", hidden = true }
+						),
+						React.createElement("span", { prop = "OuterFallback" })
+					)
+				)
+			end
+		)
+
 		it(
 			"should show nested host nodes if multiple boundaries resolve at the same time",
 			function()

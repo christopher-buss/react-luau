@@ -1161,6 +1161,26 @@ function commitLayoutEffectsForHostComponent(finishedWork: Fiber)
 	end
 end
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d68bce19c9409ed70604d1d16b70b68ce71dc4a/packages/react-reconciler/src/ReactFiberCommitWork.js#L295-L297
+-- ROBLOX DEVIATION: The React 17 mutation walk commits children before
+-- parents, so the direct hidden ancestor is read from the finished tree.
+local function hasHiddenOffscreenDirectParent(finishedWork: Fiber): boolean
+	local parent = finishedWork.return_
+	while parent ~= nil do
+		if parent.tag == HostComponent or parent.tag == HostRoot then
+			return false
+		end
+		if
+			(parent.tag == OffscreenComponent or parent.tag == LegacyHiddenComponent)
+			and parent.memoizedState ~= nil
+		then
+			return true
+		end
+		parent = parent.return_
+	end
+	return false
+end
+
 local function hideOrUnhideAllChildren(finishedWork, isHidden)
 	-- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/ReactFiberCommitWork.new.js#L1118-L1182
 	local hostSubtreeRoot: Fiber? = nil
@@ -2235,7 +2255,10 @@ local function commitWork(current: Fiber | nil, finishedWork: Fiber)
 			end
 		end
 
-		hideOrUnhideAllChildren(finishedWork, isHidden)
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/1d68bce19c9409ed70604d1d16b70b68ce71dc4a/packages/react-reconciler/src/ReactFiberCommitWork.js#L2519-L2524
+		if isHidden or not hasHiddenOffscreenDirectParent(finishedWork) then
+			hideOrUnhideAllChildren(finishedWork, isHidden)
+		end
 		if finishedWork.elementType == REACT_ACTIVITY_TYPE then
 			-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCommitWork.js#L2514-L2516
 			-- ROBLOX DEVIATION: Activity uses the existing Suspense retry cache

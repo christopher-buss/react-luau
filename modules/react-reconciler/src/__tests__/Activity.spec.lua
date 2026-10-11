@@ -1295,6 +1295,107 @@ describe("Activity", function()
 		)
 	end)
 
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d68bce19c9409ed70604d1d16b70b68ce71dc4a/packages/react-reconciler/src/__tests__/Activity-test.js#L1429-L1493
+	-- ROBLOX DEVIATION: createElement replaces JSX and ReactNoop.act replaces
+	-- internal-test-utils act; the synchronous callback requires no await.
+	it(
+		"reveal an inner Activity boundary without revealing an outer one on the same host child",
+		function()
+			local memoizedElement = React.createElement("div")
+			local function App(props)
+				return React.createElement(
+					React.Activity,
+					{
+						mode = if props.showOuter then "visible" else "hidden",
+						name = "Outer",
+					},
+					React.createElement(React.Activity, {
+						mode = if props.showInner then "visible" else "hidden",
+						name = "Inner",
+					}, memoizedElement)
+				)
+			end
+
+			local root = ReactNoop.createRoot()
+			ReactNoop.act(function()
+				root.render(
+					React.createElement(App, { showOuter = false, showInner = false })
+				)
+			end)
+			jestExpect(root).toMatchRenderedOutput(
+				React.createElement("div", { hidden = true })
+			)
+
+			ReactNoop.act(function()
+				root.render(
+					React.createElement(App, { showOuter = false, showInner = true })
+				)
+			end)
+			jestExpect(root).toMatchRenderedOutput(
+				React.createElement("div", { hidden = true })
+			)
+		end
+	)
+
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d68bce19c9409ed70604d1d16b70b68ce71dc4a/packages/react-reconciler/src/__tests__/Activity-test.js#L1460-L1493
+	it(
+		"reveal an inner Suspense boundary without revealing an outer Activity on the same host child",
+		function()
+			local memoizedElement = React.createElement("div")
+			local promise = require(Packages.Promise).new(function() end)
+			-- ROBLOX DEVIATION: React 17 cannot render a Promise as a child. A
+			-- component throws the same pending thenable at the same sibling position.
+			local function PendingPromise()
+				error(promise)
+			end
+			local function App(props)
+				return React.createElement(
+					React.Activity,
+					{
+						mode = if props.showOuter then "visible" else "hidden",
+						name = "Outer",
+					},
+					React.createElement(
+						React.Suspense,
+						{ name = "Inner" },
+						memoizedElement,
+						if props.showInner
+							then nil
+							else React.createElement(PendingPromise)
+					)
+				)
+			end
+
+			local root = ReactNoop.createRoot()
+			ReactNoop.act(function()
+				root.render(
+					React.createElement(App, { showOuter = false, showInner = true })
+				)
+			end)
+			jestExpect(root).toMatchRenderedOutput(
+				React.createElement("div", { hidden = true })
+			)
+
+			ReactNoop.act(function()
+				root.render(
+					React.createElement(App, { showOuter = false, showInner = false })
+				)
+			end)
+			jestExpect(root).toMatchRenderedOutput(
+				React.createElement("div", { hidden = true })
+			)
+
+			ReactNoop.act(function()
+				root.render(
+					React.createElement(App, { showOuter = false, showInner = true })
+				)
+			end)
+			jestExpect(root).toMatchRenderedOutput(
+				React.createElement("div", { hidden = true })
+			)
+		end
+	)
+
 	-- ROBLOX deviation: useInsertionEffect is not implemented in React-Luau.
 
 	it("warns if you pass a hidden prop", function()
