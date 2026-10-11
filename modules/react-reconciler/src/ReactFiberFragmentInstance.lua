@@ -6,6 +6,7 @@ local Packages = script.Parent.Parent
 local ReactWorkTags = require(script.Parent.ReactWorkTags)
 local ReactFiberHostConfig = require(script.Parent.ReactFiberHostConfig)
 local ReactFeatureFlags = require(Packages.Shared).ReactFeatureFlags
+local describeError = require(Packages.Shared).describeError
 local exports = {}
 
 local function isFragmentInstanceHostBoundary(fiber)
@@ -55,18 +56,29 @@ function exports.commitFragmentInstanceInsertionEffects(fiber)
 end
 
 function exports.commitFragmentInstanceDeletionEffects(fiber)
+	-- ROBLOX DEVIATION: Foreign observer cleanup cannot interrupt remaining
+	-- Fragment owners. The commit caller captures the first error after traversal.
+	local firstError = nil
 	local parent = fiber.return_
 	while parent ~= nil do
 		if isFragmentInstanceParent(parent) then
-			ReactFiberHostConfig.deleteChildFromFragmentInstance(
+			local ok, cleanupError = xpcall(
+				ReactFiberHostConfig.deleteChildFromFragmentInstance,
+				describeError,
 				fiber.stateNode,
 				parent.stateNode
 			)
+			if not ok and firstError == nil then
+				firstError = cleanupError
+			end
 		end
 		if isFragmentInstanceHostBoundary(parent) then
-			return
+			break
 		end
 		parent = parent.return_
+	end
+	if firstError ~= nil then
+		error(firstError, 0)
 	end
 end
 

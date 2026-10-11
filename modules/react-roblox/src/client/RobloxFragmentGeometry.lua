@@ -158,9 +158,14 @@ local function getIntersection(
 		intersection = rectangle(0, 0, 0, 0)
 	end
 	local area = bounds.width * bounds.height
-	local ratio = if area > 0
-		then intersection.width * intersection.height / area
-		else if intersects then 1 else 0
+	local ratio
+	if area > 0 then
+		ratio = intersection.width * intersection.height / area
+	elseif intersects then
+		ratio = 1
+	else
+		ratio = 0
+	end
 	return {
 		rootBounds = rootBounds,
 		boundingClientRect = bounds,

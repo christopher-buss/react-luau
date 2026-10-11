@@ -339,20 +339,38 @@ function exports.commitNewChildToFragmentInstance(instance, fragment)
 	addHandle(instance, fragment)
 end
 function exports.deleteChildFromFragmentInstance(instance, fragment)
+	-- ROBLOX DEVIATION: A foreign exit hook can throw. Release its target as a
+	-- fallback, finish other observers and membership, then surface the first error.
+	local firstError = nil
 	for _, registration in fragment._eventListeners do
 		detachListener(instance, registration)
 	end
 	for observer, targets in fragment._observers do
 		if targets[instance] then
 			targets[instance] = nil
-			if observer.unobserveAfterExit ~= nil then
-				observer:unobserveAfterExit(instance, fragment)
-			else
-				observer:unobserve(instance, fragment)
+			local cleanup = observer.unobserveAfterExit or observer.unobserve
+			local ok, cleanupError =
+				xpcall(cleanup, describeError, observer, instance, fragment)
+			if not ok then
+				if firstError == nil then
+					firstError = cleanupError
+				end
+				if observer.unobserveAfterExit ~= nil then
+					xpcall(
+						observer.unobserve,
+						describeError,
+						observer,
+						instance,
+						fragment
+					)
+				end
 			end
 		end
 	end
 	removeHandle(instance, fragment)
+	if firstError ~= nil then
+		error(firstError, 0)
+	end
 end
 function exports.getFragmentInstances(instance)
 	local handles = fragmentsByInstance[instance]

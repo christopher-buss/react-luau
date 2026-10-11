@@ -128,6 +128,121 @@ describe("Fragment native event ownership", function()
 		expect(ReactRoblox.getFragmentInstances(firstHost)).toEqual({})
 		expect(ReactRoblox.getFragmentInstances(secondHost)).toEqual({})
 	end)
+	it("finishes removing a child when an external observer cleanup throws", function()
+		local function render(showFirst)
+			root:render(
+				React.createElement(
+					React.Fragment,
+					{ ref = fragmentRef },
+					if showFirst
+						then React.createElement(
+							"Frame",
+							{ key = "first", ref = firstRef }
+						)
+						else nil,
+					React.createElement("Frame", { key = "second", ref = secondRef })
+				)
+			)
+		end
+		ReactRoblox.act(function()
+			render(true)
+		end)
+		local firstHost = firstRef.current
+		local observed = {}
+		local observer = {}
+		function observer:observe(target)
+			observed[target] = true
+		end
+		function observer:unobserve(target)
+			observed[target] = nil
+			if target == firstHost then
+				error("removed child cleanup failed")
+			end
+		end
+		fragmentRef.current:observeUsing(observer)
+		expect(function()
+			ReactRoblox.act(function()
+				render(false)
+			end)
+		end).toThrow("removed child cleanup failed")
+		expect(firstHost.Parent).toBeNil()
+		expect(ReactRoblox.getFragmentInstances(firstHost)).toEqual({})
+		expect(observed).toEqual({})
+	end)
+	it("finishes hiding nested Fragment children when observer cleanup throws", function()
+		local innerRef = React.createRef()
+		local function render(mode)
+			root:render(
+				React.createElement(
+					React.Fragment,
+					{ ref = fragmentRef },
+					React.createElement(
+						React.Activity,
+						{ mode = mode },
+						React.createElement(
+							React.Fragment,
+							{ ref = innerRef },
+							React.createElement("Frame", { ref = firstRef }),
+							React.createElement("Frame", { ref = secondRef })
+						)
+					)
+				)
+			)
+		end
+		ReactRoblox.act(function()
+			render("visible")
+		end)
+		local firstHost, secondHost = firstRef.current, secondRef.current
+		local ownedTargets = {}
+		local observer = {}
+		local firstRemoval = true
+		local stateBeforeRecovery
+		function observer:observe(target, owner)
+			ownedTargets[owner] = ownedTargets[owner] or {}
+			ownedTargets[owner][target] = true
+		end
+		function observer:unobserve(target, owner)
+			ownedTargets[owner][target] = nil
+			if firstRemoval then
+				firstRemoval = false
+				error("hidden child cleanup failed")
+			end
+		end
+		function observer:releaseOwner(owner)
+			ownedTargets[owner] = {}
+		end
+		function observer:releaseOwnerAfterExit(owner)
+			if stateBeforeRecovery == nil then
+				stateBeforeRecovery = {
+					firstHidden = firstHost.Parent == nil,
+					secondHidden = secondHost.Parent == nil,
+					firstMembership = #ReactRoblox.getFragmentInstances(firstHost),
+					secondMembership = #ReactRoblox.getFragmentInstances(secondHost),
+				}
+			end
+			self:releaseOwner(owner)
+		end
+		local outerHandle, innerHandle = fragmentRef.current, innerRef.current
+		outerHandle:observeUsing(observer)
+		innerHandle:observeUsing(observer)
+		expect(function()
+			ReactRoblox.act(function()
+				render("hidden")
+			end)
+		end).toThrow("hidden child cleanup failed")
+		expect(stateBeforeRecovery).toEqual({
+			firstHidden = true,
+			secondHidden = true,
+			firstMembership = 0,
+			secondMembership = 0,
+		})
+		expect(firstHost.Parent).toBeNil()
+		expect(secondHost.Parent).toBeNil()
+		expect(ReactRoblox.getFragmentInstances(firstHost)).toEqual({})
+		expect(ReactRoblox.getFragmentInstances(secondHost)).toEqual({})
+		expect(ownedTargets[outerHandle]).toEqual({})
+		expect(ownedTargets[innerHandle]).toEqual({})
+	end)
 	it("finishes manual observer removal when a target cleanup throws", function()
 		ReactRoblox.act(function()
 			root:render(

@@ -1340,6 +1340,17 @@ function commitDetachRef(current: Fiber)
 	end
 end
 
+local function hasHiddenOffscreenAncestor(fiber: Fiber): boolean
+	local ancestor = fiber.return_
+	while ancestor ~= nil do
+		if ancestor.tag == OffscreenComponent and ancestor.memoizedState ~= nil then
+			return true
+		end
+		ancestor = ancestor.return_
+	end
+	return false
+end
+
 -- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L2781-L2793
 -- ROBLOX DEVIATION: The React 17 recursive mutation walk invokes this before
 -- children, passing its error reporter instead of modern traversal context.
@@ -1347,15 +1358,7 @@ local function commitFragmentMutationEffects(finishedWork: Fiber, reportError)
 	captureCommitPhaseError = reportError
 	local current = finishedWork.alternate
 	if current ~= nil then
-		local wasHidden = false
-		local ancestor = current.return_
-		while ancestor ~= nil do
-			if ancestor.tag == OffscreenComponent and ancestor.memoizedState ~= nil then
-				wasHidden = true
-				break
-			end
-			ancestor = ancestor.return_
-		end
+		local wasHidden = hasHiddenOffscreenAncestor(current)
 		if bit32.band(finishedWork.flags, Ref) ~= 0 and not wasHidden then
 			safelyDetachRef(current, current.return_)
 		end
@@ -1422,7 +1425,14 @@ function disappearLayoutEffects(subtreeRoot: Fiber): ()
 	elseif tag == HostComponent then
 		safelyDetachRef(subtreeRoot, subtreeRoot.return_ :: Fiber)
 		-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L3149-L3167
-		ReactFiberFragmentInstance.commitFragmentInstanceDeletionEffects(subtreeRoot)
+		local ok, cleanupError = xpcall(
+			ReactFiberFragmentInstance.commitFragmentInstanceDeletionEffects,
+			describeError,
+			subtreeRoot
+		)
+		if not ok then
+			captureCommitPhaseError(subtreeRoot, subtreeRoot.return_, cleanupError)
+		end
 	elseif tag == ReactWorkTags.Fragment then
 		-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L3238-L3248
 		safelyDetachRef(subtreeRoot, subtreeRoot.return_ :: Fiber)
@@ -1572,21 +1582,20 @@ function commitUnmount(
 		return
 	elseif current.tag == HostComponent then
 		safelyDetachRef(current, nearestMountedAncestor)
-		ReactFiberFragmentInstance.commitFragmentInstanceDeletionEffects(current)
+		local ok, cleanupError = xpcall(
+			ReactFiberFragmentInstance.commitFragmentInstanceDeletionEffects,
+			describeError,
+			current
+		)
+		if not ok then
+			captureCommitPhaseError(current, nearestMountedAncestor, cleanupError)
+		end
 		return
 	elseif current.tag == ReactWorkTags.Fragment then
 		-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L1809-L1820
 		-- ROBLOX DEVIATION: The recursive React 17 walk derives prior-hidden
 		-- ancestry instead of carrying offscreenSubtreeWasHidden traversal state.
-		local wasHidden = false
-		local ancestor = current.return_
-		while ancestor ~= nil do
-			if ancestor.tag == OffscreenComponent and ancestor.memoizedState ~= nil then
-				wasHidden = true
-				break
-			end
-			ancestor = ancestor.return_
-		end
+		local wasHidden = hasHiddenOffscreenAncestor(current)
 		if not wasHidden then
 			safelyDetachRef(current, nearestMountedAncestor)
 		end

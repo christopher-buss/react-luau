@@ -539,6 +539,24 @@ compatibility failures. All applicable Fragment public cases, ownership/error
 regressions, required Legacy suspension corrections, and native GUI method cases
 pass. Integration retains unrelated shipped transition/store/error backports.
 
+Removing one host from a retained Fragment attempts every observer target and
+ancestor Fragment owner, removes reverse membership, and then reports the first
+foreign cleanup error through the reconciler's existing commit error capture.
+A failed delayed-exit hook falls back to immediate unobserve for that target;
+other successful delayed exits retain their delivery semantics. This cannot
+undo arbitrary side effects inside a foreign callback.
+
+Two public renderer regressions cover deletion and Activity hiding. Against
+`bc2113cf19d62c8f78bb385904906e2ddd281c13`, the deletion case leaves the removed
+Frame parented to its Folder. The Activity case records both Frames still
+parented and one remaining nested Fragment membership per Frame in the public
+observer owner-release callback before root recovery. The correction records
+both Frames hidden and zero memberships before recovery, preserves the first
+error, and finishes native deletion. The affected Fragment refs, observer,
+membership, native-event, Strict Activity, and Roblox Activity families run
+41/41 in development and 41/41 in production through the public Open Cloud
+harness. Original upstream cases and assertions remain unchanged.
+
 To inspect source inventory without local artifacts, use the content-addressed
 runtime revision and baseline:
 
