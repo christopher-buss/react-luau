@@ -192,11 +192,15 @@ function FragmentInstance:addEventListener(event, listener, options)
 			end
 		end)
 		if not subscribed then
-			self:removeEventListener(event, listener)
+			if registration.active then
+				self:removeEventListener(event, listener)
+			end
 			error(cleanup, 0)
 		end
 		if type(cleanup) ~= "function" then
-			self:removeEventListener(event, listener)
+			if registration.active then
+				self:removeEventListener(event, listener)
+			end
 			error("Fragment cancellation subscribe must return cleanup", 0)
 		end
 		if registration.active then

@@ -1,4 +1,4 @@
--- ROBLOX DEVIATION: These renderer regressions cover native deferred signals
+-- ROBLOX DEVIATION: These renderer regressions cover native signal ownership
 -- and the external cancellation adapter, which are absent from the DOM suite.
 local Packages = script.Parent.Parent.Parent.Parent
 local JestGlobals = require(Packages.Dev.JestGlobals)
@@ -51,6 +51,24 @@ describe("Fragment native event ownership", function()
 		expect(logs).toEqual({ { firstRef.current, "restored" } })
 	end)
 
+	it("preserves a reentrant replacement when cancellation subscribe throws", function()
+		local logs = {}
+		local function listener(_host, value)
+			table.insert(logs, value)
+		end
+		local signal = { aborted = false }
+		function signal:subscribe(callback)
+			callback()
+			fragmentRef.current:addEventListener("Event", listener)
+			error("replacement boundary failed")
+		end
+		expect(function()
+			fragmentRef.current:addEventListener("Event", listener, { signal = signal })
+		end).toThrow("replacement boundary failed")
+		firstRef.current:Fire("replacement")
+		task.wait()
+		expect(logs).toEqual({ "replacement" })
+	end)
 	it(
 		"consumes a once registration before its callback emits another child signal",
 		function()
