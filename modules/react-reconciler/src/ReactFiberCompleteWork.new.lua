@@ -1272,6 +1272,9 @@ local function completeWork(
 		if current == nil then
 			preparePortalMount(workInProgress.stateNode.containerInfo)
 		end
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/52684925368a41a0c9fbfca9016cdcbb72fc9d1e/packages/react-reconciler/src/ReactFiberCompleteWork.js#L1669-L1670
+		workInProgress.flags =
+			bit32.bor(workInProgress.flags, ReactFiberFlags.PortalStatic)
 		bubbleProperties(workInProgress)
 		return nil
 	elseif workInProgress.tag == ContextProvider then
@@ -1608,7 +1611,11 @@ local function completeWork(
 
 		-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCompleteWork.js#L1926-L1932
 		-- ROBLOX DEVIATION: React-Luau uses Update for initial hidden visibility.
-		if current == nil and nextIsHidden and workInProgress.tag == OffscreenComponent then
+		if
+			current == nil
+			and nextIsHidden
+			and workInProgress.tag == OffscreenComponent
+		then
 			markUpdate(workInProgress)
 		end
 
