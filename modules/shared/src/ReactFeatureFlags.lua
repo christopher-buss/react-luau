@@ -25,6 +25,13 @@ local GetFFlagReactFilterInternalStackFrames =
 -- https://roblox.github.io/luau/typecheck.html)
 local exports = {}
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/shared/ReactFeatureFlags.js#L165-L168
+-- ROBLOX DEVIATION: ReactRoblox supports native GUI hosts, not bare HostText.
+exports.enableFragmentRefs = true
+exports.enableFragmentRefsTextNodes = false
+exports.enableFragmentRefsInstanceHandles = true
+exports.enableFragmentRefsScrollIntoView = true
+
 -- Adds verbose console logging for e.g. state updates, suspense, and work loop stuff.
 -- Intended to enable React core members to more easily debug scheduling issues in DEV builds.
 exports.enableDebugTracing = false

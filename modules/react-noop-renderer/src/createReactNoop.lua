@@ -399,6 +399,16 @@ local function createReactNoop(reconciler, useMutation: boolean)
 
 		resetAfterCommit = function() end,
 
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-noop-renderer/src/createReactNoop.js#L529-L543
+		createFragmentInstance = function()
+			return nil
+		end,
+		updateFragmentInstanceFiber = function() end,
+		commitNewChildToFragmentInstance = function() end,
+		deleteChildFromFragmentInstance = function() end,
+		-- ROBLOX DEVIATION: Native connection disposal is renderer-specific.
+		destroyFragmentInstance = function() end,
+
 		now = Scheduler.unstable_now,
 
 		isPrimaryRenderer = true,

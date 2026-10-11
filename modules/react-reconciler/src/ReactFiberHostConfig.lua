@@ -24,6 +24,9 @@ export type HostContext = Object
 export type HydratableInstance = Instance | SuspenseInstance
 export type SuspenseInstance = Object
 export type PublicInstance = HostInstance
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/forks/ReactFiberConfig.custom.js#L49
+-- ROBLOX DEVIATION: Injected renderers own their handle shape.
+export type FragmentInstanceType = Object?
 
 export type Type = string
 export type Props = Object

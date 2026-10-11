@@ -207,4 +207,78 @@ describe("FragmentRefs", function()
 		act(rerender)
 		expect(logs).toEqual({ "cleanup 0", "attach 1" })
 	end)
+
+	-- ROBLOX DEVIATION: Adapter regression exercises prior-hidden deletion in
+	-- React-Luau's recursive commit walk through its public Activity boundary.
+	it("cleans up a hidden Fragment callback only once before deletion", function()
+		local logs = {}
+		local function ref(handle)
+			if handle == nil then
+				table.insert(logs, "detach")
+				return nil
+			end
+			table.insert(logs, "attach")
+			return function()
+				table.insert(logs, "cleanup")
+			end
+		end
+		local function element(mode)
+			return React.createElement(
+				React.Activity,
+				{ mode = mode },
+				React.createElement(
+					React.Fragment,
+					{ ref = ref },
+					React.createElement("Folder")
+				)
+			)
+		end
+		local root = ReactRoblox.createRoot(container)
+		act(function()
+			root:render(element("visible"))
+		end)
+		expect(logs).toEqual({ "attach" })
+		act(function()
+			root:render(element("hidden"))
+		end)
+		expect(logs).toEqual({ "attach", "cleanup" })
+		act(function()
+			root:unmount()
+		end)
+		expect(logs).toEqual({ "attach", "cleanup" })
+	end)
+
+	-- ROBLOX DEVIATION: Adapter regression covers React-Luau's keyed collection
+	-- reconciliation paths, which differ from upstream JavaScript child arrays.
+	it("updates callback refs on keyed Fragments in child collections", function()
+		local logs = {}
+		local handles = {}
+		local function element(step)
+			return React.createElement("Folder", nil, {
+				React.createElement("Folder", { key = "before" }),
+				React.createElement(React.Fragment, {
+					key = "group",
+					ref = function(handle)
+						table.insert(handles, handle)
+						table.insert(logs, "attach " .. step)
+						return function()
+							table.insert(logs, "cleanup " .. step)
+						end
+					end,
+				}, React.createElement("Folder")),
+				React.createElement("Folder", { key = "after" }),
+			})
+		end
+		local root = ReactRoblox.createRoot(container)
+		act(function()
+			root:render(element(0))
+		end)
+		expect(logs).toEqual({ "attach 0" })
+		table.clear(logs)
+		act(function()
+			root:render(element(1))
+		end)
+		expect(logs).toEqual({ "cleanup 0", "attach 1" })
+		expect(handles[1]).toBe(handles[2])
+	end)
 end)

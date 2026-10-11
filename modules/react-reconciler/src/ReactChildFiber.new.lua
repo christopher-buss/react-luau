@@ -560,13 +560,18 @@ local function ChildReconciler(shouldTrackSideEffects)
 			if newChildTypeof == REACT_ELEMENT_TYPE then
 				if newChild.key == key then
 					if newChild.type == REACT_FRAGMENT_TYPE then
-						return updateFragment(
+						-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactChildFiber.js#L587-L599
+						-- ROBLOX DEVIATION: React 17 dispatches Fragment collections
+						-- here instead of through the modern updateElement path.
+						local updated = updateFragment(
 							returnFiber,
 							oldFiber,
 							newChild.props.children,
 							lanes,
 							key :: string?
 						)
+						updated.ref = coerceRef(returnFiber, oldFiber, newChild)
+						return updated
 					end
 					return updateElement(returnFiber, oldFiber, newChild, lanes)
 				else
@@ -652,13 +657,16 @@ local function ChildReconciler(shouldTrackSideEffects)
 				end
 				local matchedFiber = existingChildren[existingChildrenKey]
 				if newChild.type == REACT_FRAGMENT_TYPE then
-					return updateFragment(
+					-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactChildFiber.js#L587-L599
+					local updated = updateFragment(
 						returnFiber,
 						matchedFiber,
 						newChild.props.children,
 						lanes,
 						newChild.key
 					)
+					updated.ref = coerceRef(returnFiber, matchedFiber, newChild)
+					return updated
 				end
 				return updateElement(returnFiber, matchedFiber, newChild, lanes)
 			elseif newChildTypeof == REACT_PORTAL_TYPE then
@@ -1237,7 +1245,7 @@ local function ChildReconciler(shouldTrackSideEffects)
 					if element.type == REACT_FRAGMENT_TYPE then
 						deleteRemainingChildren(returnFiber, child.sibling)
 						local existing = useFiber(child, element.props.children)
-						-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactChildFiber.js#L1687-L1695
+						-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactChildFiber.js#L1727-L1729
 						existing.ref = coerceRef(returnFiber, child, element)
 						existing.return_ = returnFiber
 						if __DEV__ then
@@ -1309,6 +1317,7 @@ local function ChildReconciler(shouldTrackSideEffects)
 				element.key :: string
 			)
 			created.return_ = returnFiber
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactChildFiber.js#L1785-L1787
 			created.ref = coerceRef(returnFiber, currentFirstChild, element)
 			return created
 		else
@@ -1379,7 +1388,7 @@ local function ChildReconciler(shouldTrackSideEffects)
 			and typeOfNewChild == "table"
 			and newChild.type == REACT_FRAGMENT_TYPE
 			and newChild.key == nil
-			-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactChildFiber.js#L1808-L1816
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactChildFiber.js#L1858-L1872
 			and newChild.props.ref == nil
 		if isUnkeyedTopLevelFragment then
 			newChild = newChild.props.children

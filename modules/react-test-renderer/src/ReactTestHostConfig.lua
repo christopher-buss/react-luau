@@ -454,4 +454,14 @@ exports.getInstanceFromScope = function(scopeInstance: Object): Object?
 	return nodeToInstanceMap[scopeInstance] or nil
 end
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-test-renderer/src/ReactFiberConfigTestHost.js#L477-L504
+exports.createFragmentInstance = function()
+	return nil
+end
+exports.updateFragmentInstanceFiber = function() end
+exports.commitNewChildToFragmentInstance = function() end
+exports.deleteChildFromFragmentInstance = function() end
+-- ROBLOX DEVIATION: Native connection disposal is renderer-specific.
+exports.destroyFragmentInstance = function() end
+
 return exports

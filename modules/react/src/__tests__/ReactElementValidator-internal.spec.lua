@@ -531,7 +531,7 @@ describe("ReactElementValidator", function()
 			ReactTestUtils.renderIntoDocument(React.createElement(Foo))
 		end).toErrorDev(
 			"Invalid prop `a` supplied to `React.Fragment`. React.Fragment "
-				.. "can only have `key` and `children` props."
+				.. "can only have `key`, `ref`, and `children` props."
 		)
 	end)
 

@@ -51,6 +51,7 @@ local __DEV__ = ReactGlobals.__DEV__ :: boolean
 local __YOLO__ = ReactGlobals.__YOLO__ :: boolean
 
 local ReactFiberHostConfig = require(script.Parent.ReactFiberHostConfig)
+local ReactFiberFragmentInstance = require(script.Parent.ReactFiberFragmentInstance)
 type Instance = ReactFiberHostConfig.Instance
 type Container = ReactFiberHostConfig.Container
 type TextInstance = ReactFiberHostConfig.TextInstance
@@ -255,6 +256,7 @@ type Set<T> = { [T]: boolean }
 
 -- deviation: pre-declare functions when necessary
 local isHostParent, getHostSibling, insertOrAppendPlacementNode, insertOrAppendPlacementNodeIntoContainer, commitLayoutEffectsForHostRoot, commitLayoutEffectsForHostComponent, commitLayoutEffectsForClassComponent, disappearLayoutEffects, reappearLayoutEffects, unmountHostComponents, commitNestedUnmounts, commitUnmount
+local safelyAttachRef
 
 -- Used to avoid traversing the return path to find the nearest Profiler ancestor during commit.
 local nearestProfilerOnStack: Fiber | nil = nil
@@ -739,7 +741,7 @@ local function recursivelyCommitLayoutEffects(
 	else
 		-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L875-L887
 		if tag == ReactWorkTags.Fragment and bit32.band(flags, Ref) ~= 0 then
-			commitAttachRef(finishedWork)
+			safelyAttachRef(finishedWork, finishedWork.return_)
 		end
 		local child = finishedWork.child
 		while child ~= nil do
@@ -1380,7 +1382,7 @@ local function safelyCallComponentDidMount(
 	end
 end
 
-local function safelyAttachRef(current: Fiber, nearestMountedAncestor: Fiber?): ()
+function safelyAttachRef(current: Fiber, nearestMountedAncestor: Fiber?): ()
 	local ok, error_ = xpcall(commitAttachRef, describeError, current)
 	if not ok then
 		captureCommitPhaseError(current, nearestMountedAncestor, error_)
@@ -1419,6 +1421,8 @@ function disappearLayoutEffects(subtreeRoot: Fiber): ()
 		end
 	elseif tag == HostComponent then
 		safelyDetachRef(subtreeRoot, subtreeRoot.return_ :: Fiber)
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L3149-L3167
+		ReactFiberFragmentInstance.commitFragmentInstanceDeletionEffects(subtreeRoot)
 	elseif tag == ReactWorkTags.Fragment then
 		-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L3238-L3248
 		safelyDetachRef(subtreeRoot, subtreeRoot.return_ :: Fiber)
@@ -1448,6 +1452,9 @@ function reappearLayoutEffects(
 	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L3560-L3572
 	if subtreeRoot.tag == ReactWorkTags.Fragment then
 		safelyAttachRef(subtreeRoot, subtreeRoot.return_)
+	elseif subtreeRoot.tag == HostComponent then
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L3389-L3401
+		ReactFiberFragmentInstance.commitFragmentInstanceInsertionEffects(subtreeRoot)
 	end
 
 	local child = subtreeRoot.child
@@ -1565,10 +1572,29 @@ function commitUnmount(
 		return
 	elseif current.tag == HostComponent then
 		safelyDetachRef(current, nearestMountedAncestor)
+		ReactFiberFragmentInstance.commitFragmentInstanceDeletionEffects(current)
 		return
 	elseif current.tag == ReactWorkTags.Fragment then
 		-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L1809-L1820
-		safelyDetachRef(current, nearestMountedAncestor)
+		-- ROBLOX DEVIATION: The recursive React 17 walk derives prior-hidden
+		-- ancestry instead of carrying offscreenSubtreeWasHidden traversal state.
+		local wasHidden = false
+		local ancestor = current.return_
+		while ancestor ~= nil do
+			if ancestor.tag == OffscreenComponent and ancestor.memoizedState ~= nil then
+				wasHidden = true
+				break
+			end
+			ancestor = ancestor.return_
+		end
+		if not wasHidden then
+			safelyDetachRef(current, nearestMountedAncestor)
+		end
+		if current.stateNode ~= nil then
+			-- ROBLOX DEVIATION: Empty native handles own cancellation and observer
+			-- resources, so deletion disposes them in addition to child effects.
+			ReactFiberHostConfig.destroyFragmentInstance(current.stateNode)
+		end
 		return
 	elseif current.tag == HostPortal then
 		-- TODO: this is recursive.
@@ -1843,19 +1869,28 @@ local function commitPlacement(finishedWork: Fiber)
 	end
 
 	local before = getHostSibling(finishedWork)
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitHostEffects.js#L463-L467
+	local parentFragmentInstances =
+		ReactFiberFragmentInstance.getParentFragmentInstances(finishedWork)
 	-- We only have the top Fiber that was inserted but we need to recurse down its
 	-- children to find all the terminal nodes.
 	if isContainer then
-		insertOrAppendPlacementNodeIntoContainer(finishedWork, before, parent)
+		insertOrAppendPlacementNodeIntoContainer(
+			finishedWork,
+			before,
+			parent,
+			parentFragmentInstances
+		)
 	else
-		insertOrAppendPlacementNode(finishedWork, before, parent)
+		insertOrAppendPlacementNode(finishedWork, before, parent, parentFragmentInstances)
 	end
 end
 
 function insertOrAppendPlacementNodeIntoContainer(
 	node: Fiber,
 	before: Instance?,
-	parent: Container
+	parent: Container,
+	parentFragmentInstances
 )
 	local tag = node.tag
 	local isHost = tag == HostComponent or tag == HostText
@@ -1867,6 +1902,11 @@ function insertOrAppendPlacementNodeIntoContainer(
 		else
 			appendChildToContainer(parent, stateNode)
 		end
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitHostEffects.js#L374-L392
+		ReactFiberFragmentInstance.commitNewChildToFragmentInstances(
+			node,
+			parentFragmentInstances
+		)
 		-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCompleteWork.js#L1926-L1932
 		-- ROBLOX DEVIATION: React 17 can commit hidden visibility before wrapper
 		-- placement; Roblox detachment requires an attached parent to hide.
@@ -1884,17 +1924,32 @@ function insertOrAppendPlacementNodeIntoContainer(
 	else
 		local child = node.child
 		if child ~= nil then
-			insertOrAppendPlacementNodeIntoContainer(child, before, parent)
+			insertOrAppendPlacementNodeIntoContainer(
+				child,
+				before,
+				parent,
+				parentFragmentInstances
+			)
 			local sibling = child.sibling
 			while sibling ~= nil do
-				insertOrAppendPlacementNodeIntoContainer(sibling, before, parent)
+				insertOrAppendPlacementNodeIntoContainer(
+					sibling,
+					before,
+					parent,
+					parentFragmentInstances
+				)
 				sibling = sibling.sibling
 			end
 		end
 	end
 end
 
-function insertOrAppendPlacementNode(node: Fiber, before: Instance?, parent: Instance): ()
+function insertOrAppendPlacementNode(
+	node: Fiber,
+	before: Instance?,
+	parent: Instance,
+	parentFragmentInstances
+): ()
 	local tag = node.tag
 	local isHost = tag == HostComponent or tag == HostText
 	-- ROBLOX performance: avoid always-false compare for Roblox renderer in hot path
@@ -1905,6 +1960,10 @@ function insertOrAppendPlacementNode(node: Fiber, before: Instance?, parent: Ins
 		else
 			appendChild(parent, stateNode)
 		end
+		ReactFiberFragmentInstance.commitNewChildToFragmentInstances(
+			node,
+			parentFragmentInstances
+		)
 		-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCompleteWork.js#L1926-L1932
 		-- ROBLOX DEVIATION: React 17 can commit hidden visibility before wrapper
 		-- placement; Roblox detachment requires an attached parent to hide.
@@ -1922,10 +1981,15 @@ function insertOrAppendPlacementNode(node: Fiber, before: Instance?, parent: Ins
 	else
 		local child = node.child
 		if child ~= nil then
-			insertOrAppendPlacementNode(child, before, parent)
+			insertOrAppendPlacementNode(child, before, parent, parentFragmentInstances)
 			local sibling = child.sibling
 			while sibling ~= nil do
-				insertOrAppendPlacementNode(sibling, before, parent)
+				insertOrAppendPlacementNode(
+					sibling,
+					before,
+					parent,
+					parentFragmentInstances
+				)
 				sibling = sibling.sibling
 			end
 		end
