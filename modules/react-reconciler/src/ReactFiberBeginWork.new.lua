@@ -842,7 +842,11 @@ end
 -- fork the function.
 local updateLegacyHiddenComponent = updateOffscreenComponent
 
+local markRef
+
 function updateFragment(current: Fiber | nil, workInProgress: Fiber, renderLanes: Lanes)
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberBeginWork.js#L1363-L1373
+	markRef(current, workInProgress)
 	local nextChildren = workInProgress.pendingProps
 	reconcileChildren(current, workInProgress, nextChildren, renderLanes)
 	return workInProgress.child
@@ -868,7 +872,7 @@ function updateProfiler(current: Fiber | nil, workInProgress: Fiber, renderLanes
 	return workInProgress.child
 end
 
-local function markRef(current: Fiber | nil, workInProgress: Fiber)
+function markRef(current: Fiber | nil, workInProgress: Fiber)
 	-- ROBLOX upstream: https://github.com/facebook/react/blob/v19.0.0/packages/react-reconciler/src/ReactFiberBeginWork.js#L1039-L1058
 	-- ROBLOX DEVIATION: This React 17 fork does not have the RefStatic flag.
 	local ref = workInProgress.ref

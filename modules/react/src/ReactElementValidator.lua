@@ -350,11 +350,12 @@ local function validateFragmentProps<P>(fragment: ReactElement<P & Object, any>)
 		local keys = Object.keys(fragment.props)
 		for i = 1, #keys do
 			local key = keys[i]
-			if key ~= "children" and key ~= "key" then
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactChildFiber.js#L222-L227
+			if key ~= "children" and key ~= "key" and key ~= "ref" then
 				setCurrentlyValidatingElement(fragment)
 				console.error(
 					"Invalid prop `%s` supplied to `React.Fragment`. "
-						.. "React.Fragment can only have `key` and `children` props.",
+						.. "React.Fragment can only have `key`, `ref`, and `children` props.",
 					key
 				)
 				setCurrentlyValidatingElement(nil)

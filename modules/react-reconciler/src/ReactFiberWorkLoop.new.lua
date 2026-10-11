@@ -2594,6 +2594,12 @@ mod.commitMutationEffects = function(
 )
 	local fiber = firstChild
 	while fiber ~= nil do
+		if fiber.tag == ReactWorkTags.Fragment then
+			ReactFiberCommitWork.commitFragmentMutationEffects(
+				fiber,
+				exports.captureCommitPhaseError
+			)
+		end
 		local deletions = fiber.deletions
 		if deletions ~= nil then
 			-- ROBLOX performance: React 18 inlines commitMutationEffectsDeletions, pulling that in based on tab switching hot path
@@ -2672,7 +2678,10 @@ mod.commitMutationEffectsImpl = function(
 	-- commitResetTextContent(fiber)
 	-- end
 
-	if bit32.band(flags, ReactFiberFlags.Ref) ~= 0 then
+	if
+		bit32.band(flags, ReactFiberFlags.Ref) ~= 0
+		and fiber.tag ~= ReactWorkTags.Fragment
+	then
 		local current = fiber.alternate
 		if current ~= nil then
 			commitDetachRef(current)

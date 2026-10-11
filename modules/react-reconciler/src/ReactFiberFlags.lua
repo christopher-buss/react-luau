@@ -86,8 +86,8 @@ exports.PassiveMask = --[[                  ]]
 -- This allows certain concepts to persist without recalculting them,
 -- e.g. whether a subtree contains passive effects or portals.
 -- ROBLOX upstream: https://github.com/facebook/react/blob/52684925368a41a0c9fbfca9016cdcbb72fc9d1e/packages/react-reconciler/src/ReactFiberFlags.js#L90-L93
--- ROBLOX DEVIATION: Preserve React-Luau's existing flags and use free bit 18.
-exports.PortalStatic = 0b1000000000000000000
+-- ROBLOX DEVIATION: Preserve PlacementDEV at bit 18 and use free bit 19.
+exports.PortalStatic = 0b10000000000000000000
 exports.StaticMask = bit32.bor(exports.PassiveStatic, exports.PortalStatic)
 
 -- These flags allow us to traverse to fibers that have effects on mount

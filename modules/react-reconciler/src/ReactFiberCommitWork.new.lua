@@ -737,6 +737,10 @@ local function recursivelyCommitLayoutEffects(
 	-- elseif tag == Offscreen then
 	-- TODO: Fast path to invoke all nested layout effects when Offscren goes from hidden to visible.
 	else
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L875-L887
+		if tag == ReactWorkTags.Fragment and bit32.band(flags, Ref) ~= 0 then
+			commitAttachRef(finishedWork)
+		end
 		local child = finishedWork.child
 		while child ~= nil do
 			local primarySubtreeFlags = bit32.band(finishedWork.subtreeFlags, LayoutMask)
@@ -890,7 +894,7 @@ local function recursivelyCommitLayoutEffects(
 		--     commitAttachRef(finishedWork)
 		--   end
 		-- else
-		if bit32.band(flags, Ref) ~= 0 then
+		if bit32.band(flags, Ref) ~= 0 and tag ~= ReactWorkTags.Fragment then
 			commitAttachRef(finishedWork)
 		end
 		-- end
@@ -1272,6 +1276,13 @@ function commitAttachRef(finishedWork: Fiber)
 		local instanceToUse
 		if finishedWork.tag == HostComponent then
 			instanceToUse = getPublicInstance(instance)
+		elseif finishedWork.tag == ReactWorkTags.Fragment then
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitEffects.js#L781-L788
+			if instance == nil then
+				finishedWork.stateNode =
+					ReactFiberHostConfig.createFragmentInstance(finishedWork)
+			end
+			instanceToUse = finishedWork.stateNode
 		else
 			instanceToUse = instance
 		end
@@ -1323,6 +1334,34 @@ function commitDetachRef(current: Fiber)
 			currentRef(nil)
 		else
 			currentRef.current = nil
+		end
+	end
+end
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L2781-L2793
+-- ROBLOX DEVIATION: The React 17 recursive mutation walk invokes this before
+-- children, passing its error reporter instead of modern traversal context.
+local function commitFragmentMutationEffects(finishedWork: Fiber, reportError)
+	captureCommitPhaseError = reportError
+	local current = finishedWork.alternate
+	if current ~= nil then
+		local wasHidden = false
+		local ancestor = current.return_
+		while ancestor ~= nil do
+			if ancestor.tag == OffscreenComponent and ancestor.memoizedState ~= nil then
+				wasHidden = true
+				break
+			end
+			ancestor = ancestor.return_
+		end
+		if bit32.band(finishedWork.flags, Ref) ~= 0 and not wasHidden then
+			safelyDetachRef(current, current.return_)
+		end
+		if current.stateNode ~= nil then
+			ReactFiberHostConfig.updateFragmentInstanceFiber(
+				finishedWork,
+				current.stateNode
+			)
 		end
 	end
 end
@@ -1380,6 +1419,9 @@ function disappearLayoutEffects(subtreeRoot: Fiber): ()
 		end
 	elseif tag == HostComponent then
 		safelyDetachRef(subtreeRoot, subtreeRoot.return_ :: Fiber)
+	elseif tag == ReactWorkTags.Fragment then
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L3238-L3248
+		safelyDetachRef(subtreeRoot, subtreeRoot.return_ :: Fiber)
 	elseif tag == OffscreenComponent and subtreeRoot.memoizedState ~= nil then
 		return
 	end
@@ -1402,6 +1444,10 @@ function reappearLayoutEffects(
 ): ()
 	if subtreeRoot.tag == OffscreenComponent and subtreeRoot.memoizedState ~= nil then
 		return
+	end
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L3560-L3572
+	if subtreeRoot.tag == ReactWorkTags.Fragment then
+		safelyAttachRef(subtreeRoot, subtreeRoot.return_)
 	end
 
 	local child = subtreeRoot.child
@@ -1518,6 +1564,10 @@ function commitUnmount(
 		end
 		return
 	elseif current.tag == HostComponent then
+		safelyDetachRef(current, nearestMountedAncestor)
+		return
+	elseif current.tag == ReactWorkTags.Fragment then
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L1809-L1820
 		safelyDetachRef(current, nearestMountedAncestor)
 		return
 	elseif current.tag == HostPortal then
@@ -2730,6 +2780,7 @@ return {
 	commitDeletion = commitDeletion,
 	commitWork = commitWork,
 	commitAttachRef = commitAttachRef,
+	commitFragmentMutationEffects = commitFragmentMutationEffects,
 	commitDetachRef = commitDetachRef,
 	commitPassiveUnmount = commitPassiveUnmount,
 	commitPassiveUnmountInsideDeletedTree = commitPassiveUnmountInsideDeletedTree,
