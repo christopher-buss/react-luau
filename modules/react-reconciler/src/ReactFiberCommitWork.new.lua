@@ -1744,7 +1744,11 @@ function insertOrAppendPlacementNodeIntoContainer(
 		-- ROBLOX DEVIATION: React 17 can commit hidden visibility before wrapper
 		-- placement; Roblox detachment requires an attached parent to hide.
 		if hasHiddenOffscreenDirectParent(node) then
-			hideInstance(stateNode)
+			if tag == HostText then
+				hideTextInstance(stateNode)
+			else
+				hideInstance(stateNode)
+			end
 		end
 	elseif tag == HostPortal then
 	-- If the insertion itself is a portal, then we don't want to traverse
@@ -1778,7 +1782,11 @@ function insertOrAppendPlacementNode(node: Fiber, before: Instance?, parent: Ins
 		-- ROBLOX DEVIATION: React 17 can commit hidden visibility before wrapper
 		-- placement; Roblox detachment requires an attached parent to hide.
 		if hasHiddenOffscreenDirectParent(node) then
-			hideInstance(stateNode)
+			if tag == HostText then
+				hideTextInstance(stateNode)
+			else
+				hideInstance(stateNode)
+			end
 		end
 	elseif tag == HostPortal then
 	-- If the insertion itself is a portal, then we don't want to traverse
