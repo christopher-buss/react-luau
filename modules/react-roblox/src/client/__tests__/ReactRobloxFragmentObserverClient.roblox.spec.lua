@@ -135,6 +135,49 @@ clientDescribe("Roblox Fragment observer client geometry", function()
 		expect(expandedRatios).toEqual({ 1 })
 	end)
 
+	it("clips scrollbar gutters and follows the left scrollbar origin", function()
+		local inset = GuiService:GetGuiInset()
+		local scroll = Instance.new("ScrollingFrame")
+		scroll.Position = UDim2.fromOffset(100, 100)
+		scroll.Size = UDim2.fromOffset(200, 100)
+		scroll.CanvasSize = UDim2.fromOffset(400, 400)
+		scroll.ScrollBarThickness = 20
+		scroll.ScrollBarImageTransparency = 1
+		scroll.BorderSizePixel = 0
+		scroll.Parent = gui
+		local target = Instance.new("Frame")
+		target.Position = UDim2.fromOffset(170, 10)
+		target.Size = UDim2.fromOffset(20, 20)
+		target.Parent = scroll
+		settle()
+		local entries = {}
+		local observer = ReactRoblox.createIntersectionObserver(function(records)
+			for _, entry in records do
+				table.insert(entries, entry)
+			end
+		end, { root = scroll, threshold = { 0, 0.5, 1 } })
+		table.insert(observers, observer)
+		observer:observe(target)
+		settle()
+		expect(entries[1].rootBounds.x).toBe(100 - inset.X)
+		expect(entries[1].rootBounds.width).toBe(180)
+		expect(entries[1].rootBounds.height).toBe(80)
+		expect(entries[1].intersectionRatio).toBe(0.5)
+		scroll.VerticalScrollBarPosition = Enum.VerticalScrollBarPosition.Left
+		settle()
+		expect(entries[2].rootBounds.x).toBe(120 - inset.X)
+		expect(entries[2].intersectionRatio).toBe(1)
+		scroll.ScrollBarThickness = 0
+		settle()
+		target.Position = UDim2.fromOffset(0, 90)
+		settle()
+		local last = entries[#entries]
+		expect(last.rootBounds.x).toBe(100 - inset.X)
+		expect(last.rootBounds.width).toBe(200)
+		expect(last.rootBounds.height).toBe(100)
+		expect(last.intersectionRatio).toBe(0.5)
+	end)
+
 	it("retains overlapping owners and cancels a reveal's delayed release", function()
 		local target = Instance.new("Frame")
 		target.Size = UDim2.fromOffset(40, 40)

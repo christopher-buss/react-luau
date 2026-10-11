@@ -314,6 +314,18 @@ local function createObserver(callback, intersectionOptions)
 							ancestor:GetPropertyChangedSignal(property):Connect(changed)
 						)
 					end
+					if ancestor:IsA("ScrollingFrame") then
+						for _, property in
+							{ "AbsoluteWindowSize", "VerticalScrollBarPosition" }
+						do
+							table.insert(
+								state.connections,
+								ancestor
+									:GetPropertyChangedSignal(property)
+									:Connect(changed)
+							)
+						end
+					end
 				elseif ancestor:IsA("LayerCollector") then
 					table.insert(
 						state.connections,

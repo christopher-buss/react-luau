@@ -40,6 +40,22 @@ local function getClientRect(gui: GuiBase2d): ClientRect
 	return rectangle(position.X, position.Y, size.X, size.Y)
 end
 
+local function getClippingRect(gui: GuiBase2d): ClientRect
+	if not gui:IsA("ScrollingFrame") then
+		return getClientRect(gui)
+	end
+	-- ROBLOX DEVIATION: Native scrolling clips scrollbar gutters even when
+	-- transparent; left gutters move the clipping origin independently of canvas inset.
+	local position = gui.AbsolutePosition
+	local size = gui.AbsoluteSize
+	local window = gui.AbsoluteWindowSize
+	local leftInset = if gui.VerticalScrollBarPosition
+			== Enum.VerticalScrollBarPosition.Left
+		then size.X - window.X
+		else 0
+	return rectangle(position.X + leftInset, position.Y, window.X, window.Y)
+end
+
 local function isVisible(gui: Instance): boolean
 	local ancestor: Instance? = gui
 	while ancestor ~= nil do
@@ -108,7 +124,7 @@ local function getIntersection(
 	local intersects = isVisible(gui) and screen ~= nil and screen:IsDescendantOf(game)
 	if root ~= nil then
 		intersects = intersects and gui:IsDescendantOf(root)
-		rootBounds = getClientRect(root)
+		rootBounds = getClippingRect(root)
 	elseif screen ~= nil then
 		rootBounds = getClientRect(screen)
 	end
@@ -133,7 +149,7 @@ local function getIntersection(
 	while ancestor ~= nil and ancestor ~= root and ancestor ~= screen do
 		if ancestor:IsA("GuiObject") and ancestor.ClipsDescendants then
 			local overlaps
-			intersection, overlaps = intersect(intersection, getClientRect(ancestor))
+			intersection, overlaps = intersect(intersection, getClippingRect(ancestor))
 			intersects = intersects and overlaps
 		end
 		ancestor = ancestor.Parent
