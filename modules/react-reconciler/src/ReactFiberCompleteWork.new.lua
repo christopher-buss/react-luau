@@ -1606,6 +1606,12 @@ local function completeWork(
 			end
 		end
 
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCompleteWork.js#L1926-L1932
+		-- ROBLOX DEVIATION: React-Luau uses Update for initial hidden visibility.
+		if current == nil and nextIsHidden and workInProgress.tag == OffscreenComponent then
+			markUpdate(workInProgress)
+		end
+
 		-- Don't bubble properties for hidden children.
 		local isRenderingOffscreen =
 			includesSomeLane(ReactFiberWorkLoop.subtreeRenderLanes, OffscreenLane :: Lane)
