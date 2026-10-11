@@ -250,13 +250,15 @@ these required source/interop translations and the named Noop snapshot field.
 
 ## Recorded native verification
 
-Fresh actual-client executions pass all 85 retained public callbacks in both
-DEV and production on runtime commit
-`c1078af394e01203e5024e48d843829c5186a98b`: 18 focus, 17 query, 2 rectangle,
-14 scroll, 17 event methods, 7 cleanup/event regressions, 2 membership, and
+Fresh actual-client executions pass all 87 retained public callbacks in both
+DEV and production on correction runtime commit
+`34b44a23e3757873b256a69beb0e743dc70f5f3c`: 18 focus, 17 query, 2 rectangle,
+14 scroll, 17 event methods, 9 cleanup/event regressions, 2 membership, and
 8 observer cases. Engine `0.742.0.7421053` reports viewport 1809×910 and inset
 (0, 58); both actual `__DEV__` values are recorded. SignalBehavior is unreadable
-in that context. Expected static-key and cleanup-boundary warnings are retained.
+in that context. The prior 85-case replay on `c1078af` remains historical; the
+correction adds two faithful public cleanup cases. Expected static-key and
+cleanup-boundary warnings are retained.
 The left-gutter scroll regression reproduces CanvasPosition (20, 300) before the
 fix and (0, 300) after it, with the target already inside the actual native window.
 The additional gutter cases do not alter the original 88-source-case ledger.
@@ -319,7 +321,7 @@ const tree = {
 };
 fs.writeFileSync('harness.project.json', JSON.stringify({ name: 'react-luau-harness', tree }, null, 2));
 const names = ['react', 'shared', 'react-noop-renderer', 'react-test-renderer', 'react-roblox'];
-const configs = { core: names.slice(0, 4), 'react-shared': ['react', 'shared'], 'test-renderer': ['react-test-renderer'], roblox: ['react-roblox'] };
+const configs = { core: names.slice(0, 4), 'react-shared': ['react', 'shared'], 'test-renderer': ['react-test-renderer'], affected: ['react-reconciler', 'react-roblox'], roblox: ['react-roblox'] };
 const suites = fs.readdirSync('modules/react-reconciler/src/__tests__').filter(n => n.endsWith('.spec.lua')).sort();
 for (let batch = 0; batch < 5; batch++) configs[`reconciler-${batch}`] = ['react-reconciler'];
 for (const [group, modules] of Object.entries(configs)) for (const mode of ['dev', 'prod']) {
@@ -397,7 +399,8 @@ removing the probe reproduces the five preserved loadstring metadata failures.
 Counts are pass / fail / skip / total. The reconciler partitions are disjoint;
 diagnostic filtered cases, targeted prerequisite replays, and native callbacks
 are excluded from their totals. A failed aggregate remains failed. The final
-batch-0, package aggregates, and native runs use `c1078af`; earlier unaffected
+batch-0 and package aggregates below record their tested `c1078af` inputs;
+earlier unaffected
 partitions retain equivalent source/configuration inputs, with changed async
 act consumers replayed separately.
 
@@ -416,7 +419,8 @@ act consumers replayed separately.
 Additional required prerequisite gates pass: Legacy Activity/Suspense 8/8
 in each mode; asynchronous Noop/TestRenderer act consumers 6/6 in each mode;
 100 native task callbacks complete while a mocked timer remains pending.
-The native callback evidence is separately 85/85 in each mode. Roblox server
+The original native callback evidence is separately 85/85 in each mode on
+`c1078af`; the correction replay records 87/87 above. Roblox server
 skips retain the client-only cases; they are exercised by that native evidence.
 
 The original failed titles remain unchanged:
@@ -502,7 +506,7 @@ for (const mode of ['dev', 'prod']) {
 }
 ```
 
-Static verification on runtime `c1078af` covers all 44 changed Lua files relative
+Static verification on correction runtime `34b44a23e3757873b256a69beb0e743dc70f5f3c` covers all 44 changed Lua files relative
 to `16014a8`: `stylua 0.18.1 --check`, `selene 0.28.0`, and
 `luau-compile --null` pass; Selene reports zero errors/warnings. `git diff --check`
 passes. The original native CI pipeline and native module-debug gate remain
@@ -514,9 +518,9 @@ preserved alternate-backend failures are reported separately.
 
 The pre-feature composed prerequisite revision is
 `16014a8b9c4430f0f9b45160795a0be1744200cc`. Identical original source assertions
-and external reporting adapters reproduce the current failures on that revision:
+and external reporting adapters reproduce the recorded `c1078af` failures on that revision:
 
-| Comparison | Baseline evidence | Current evidence |
+| Comparison | Baseline evidence | Recorded `c1078af` evidence |
 | --- | --- | --- |
 | Activity nested-hide lifecycle, `Activity.spec.lua:310` | Expected `{"child"}`; actual `{"child", "componentWillUnmount"}`. | Same exact log mismatch on `c1078af`. |
 | Activity passive-hide ordering, `Activity.spec.lua:1099` | Expected `{"Unmount Parent", "Unmount Child"}`; actual `{"Unmount Child", "Unmount Parent"}`. | Same exact log mismatch on `c1078af`. |
@@ -557,12 +561,37 @@ membership, native-event, Strict Activity, and Roblox Activity families run
 41/41 in development and 41/41 in production through the public Open Cloud
 harness. Original upstream cases and assertions remain unchanged.
 
+Correction commit `34b44a23e3757873b256a69beb0e743dc70f5f3c` includes these
+four runtime files and two public cases in `FragmentNativeEvents.spec.lua`.
+Its affected 41-case gate supplements the historical whole-suite results; the
+whole ReactRoblox 22-suite aggregate is rerun on this correction and records
+136 passes, zero failures, and 44 client-only skips in each mode (180 total).
+Its actual counts supplement the unchanged historical rows above. All 44
+changed Lua files pass the pinned static checks on this correction revision.
+The unaffected broad paths retain their recorded source applicability.
+
+To reproduce the affected gate with the generated harness, run the same CLI
+shown above with either DEV or production configuration and this exact filter:
+
+```powershell
+node --env-file="$env:ANIME_RUSH/.env" "$env:ANIME_RUSH/node_modules/@isentinel/jest-roblox/bin/jest-roblox.js" --config jest.affected.dev.config.json --backend open-cloud --no-coverage --testPathPattern 'FragmentNativeEvents|FragmentMembership|ReactFragmentRefs|ReactRobloxFragmentObservation|ReactRobloxFragmentObservers|ActivityStrictMode|ReactRobloxActivity' --formatters json --outputFile affected-dev.json
+```
+
+The generated affected configuration includes both reconciler and ReactRoblox
+projects with their full original suite globs.
+The checked-in source titles make both regression runs reproducible:
+`finishes removing a child when an external observer cleanup throws` and
+`finishes hiding nested Fragment children when observer cleanup throws`.
+Each original RED runs against `bc2113c`; deletion leaves the host parented and
+hiding reports retained hosts/memberships before error recovery. The corrected
+41-case family preserves the first error and completes both operations.
+
 To inspect source inventory without local artifacts, use the content-addressed
 runtime revision and baseline:
 
 ```powershell
-git diff --name-only 9351444c2db37caa08b38ad5de90f438db9221ea c1078af394e01203e5024e48d843829c5186a98b
-$scope = @(git diff --name-only 16014a8b9c4430f0f9b45160795a0be1744200cc c1078af394e01203e5024e48d843829c5186a98b -- '*.lua')
+git diff --name-only 9351444c2db37caa08b38ad5de90f438db9221ea 34b44a23e3757873b256a69beb0e743dc70f5f3c
+$scope = @(git diff --name-only 16014a8b9c4430f0f9b45160795a0be1744200cc 34b44a23e3757873b256a69beb0e743dc70f5f3c -- '*.lua')
 stylua --check @scope
 selene @scope
 foreach ($file in $scope) { luau-compile --null $file }
