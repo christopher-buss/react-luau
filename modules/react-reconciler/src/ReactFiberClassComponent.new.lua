@@ -1438,7 +1438,11 @@ resolveClassComponentProps = function(
 ): { [any]: any }
 	local newProps = baseProps
 	-- Resolve default props. Taken from old JSX runtime, where this used to live.
-	local defaultProps = Component.defaultProps
+	-- ROBLOX DEVIATION: Retained module-pattern constructors are Luau functions,
+	-- which have no property access; class tables carry defaultProps metadata.
+	local defaultProps = if typeof(Component) == "table"
+		then Component.defaultProps
+		else nil
 	if defaultProps and not alreadyResolvedDefaultProps then
 		newProps = Object.assign({}, newProps, baseProps)
 		for propName, value in defaultProps do
