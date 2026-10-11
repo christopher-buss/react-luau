@@ -33,6 +33,12 @@ exports.cancelHostCallback = function()
 	scheduledCallback = nil
 end
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/scheduler/src/forks/SchedulerMock.js#L538-L540
+-- ROBLOX DEVIATION: The retained mock stores host work in this separate module.
+exports.unstable_hasPendingWork = function(): boolean
+	return scheduledCallback ~= nil
+end
+
 exports.requestHostTimeout = function(callback: (number) -> (), ms: number)
 	scheduledTimeout = callback
 	timeoutTime = currentTime + ms

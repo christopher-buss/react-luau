@@ -770,7 +770,10 @@ local function createReactNoop(reconciler, useMutation: boolean)
 				type = REACT_FRAGMENT_TYPE,
 				key = nil,
 				ref = nil,
-				props = { children },
+				-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-noop-renderer/src/createReactNoop.js#L1094-L1105
+				-- ROBLOX DEVIATION: JavaScript object shorthand requires an explicit
+				-- named field in Luau; an array table changes the JSX props shape.
+				props = { children = children },
 				_owner = nil,
 				_store = store,
 			}

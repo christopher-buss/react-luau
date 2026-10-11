@@ -747,14 +747,27 @@ local function updateOffscreenComponent(
 			workInProgress.elementType == ReactSymbols.REACT_ACTIVITY_TYPE
 			and bit32.band(workInProgress.flags, DidCapture) ~= NoFlags
 		then
-			-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberBeginWork.js#L647-L680
-			-- ROBLOX DEVIATION: The client port restores the last committed
-			-- children without importing hidden context, caches, or hydration.
-			workInProgress.flags =
-				bit32.band(workInProgress.flags, bit32.bnot(DidCapture))
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberBeginWork.js#L642-L687
+			-- ROBLOX DEVIATION: Preserve deferred lanes in the retained Offscreen
+			-- state and render-lane stack without caches or hidden context.
+			local nextBaseLanes = if prevState ~= nil
+				then ReactFiberLane.mergeLanes(prevState.baseLanes, renderLanes)
+				else renderLanes
+			local remainingChildLanes = ReactFiberLane.NoLanes
 			workInProgress.child = if current ~= nil then current.child else nil
+			local currentChild = workInProgress.child
+			while currentChild ~= nil do
+				remainingChildLanes = ReactFiberLane.mergeLanes(
+					ReactFiberLane.mergeLanes(remainingChildLanes, currentChild.lanes),
+					currentChild.childLanes
+				)
+				currentChild = currentChild.sibling
+			end
+			workInProgress.childLanes =
+				ReactFiberLane.removeLanes(remainingChildLanes, nextBaseLanes)
+			workInProgress.memoizedState = { baseLanes = nextBaseLanes }
 			workInProgress.flags = bit32.bor(workInProgress.flags, ReactFiberFlags.Update)
-			pushRenderLanes(workInProgress, renderLanes)
+			pushRenderLanes(workInProgress, nextBaseLanes)
 			return nil
 		end
 

@@ -1624,7 +1624,10 @@ local function completeWork(
 			includesSomeLane(ReactFiberWorkLoop.subtreeRenderLanes, OffscreenLane :: Lane)
 		if
 			not nextIsHidden
-			or isRenderingOffscreen
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCompleteWork.js#L1939-L1950
+			-- ROBLOX DEVIATION: Retain the older render-lane stack while preserving
+			-- the captured tree's filtered lanes instead of bubbling suspended work.
+			or (isRenderingOffscreen and bit32.band(workInProgress.flags, DidCapture) == NoFlags)
 			or bit32.band(workInProgress.mode, ConcurrentMode) == NoMode
 		then
 			bubbleProperties(workInProgress)

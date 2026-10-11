@@ -29,6 +29,7 @@ for key, value in TracingSubscriptions :: any do
 end
 
 exports.unstable_flushAllWithoutAsserting = HostConfig.unstable_flushAllWithoutAsserting
+exports.unstable_hasPendingWork = HostConfig.unstable_hasPendingWork
 exports.unstable_flushNumberOfYields = HostConfig.unstable_flushNumberOfYields
 exports.unstable_flushExpired = HostConfig.unstable_flushExpired
 exports.unstable_clearYields = HostConfig.unstable_clearYields

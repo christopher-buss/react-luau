@@ -7,11 +7,13 @@
  *
  *
  ]]
-local Packages = script.Parent.Parent
-local LuauPolyfill = require(Packages.LuauPolyfill)
-local setTimeout = LuauPolyfill.setTimeout
+-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/shared/enqueueTask.js
+-- ROBLOX DEVIATION: Heartbeat provides an unmocked native turn. task.defer
+-- chains share a turn and reach Roblox's task reentrancy limit of 80.
+local RunService = game:GetService("RunService")
 
-return function(task)
-	-- deviation: Replace with setImmediate once we create an equivalent polyfill
-	return setTimeout(task, 0)
+return function(callback: () -> ())
+	RunService.Heartbeat:Once(function()
+		callback()
+	end)
 end
