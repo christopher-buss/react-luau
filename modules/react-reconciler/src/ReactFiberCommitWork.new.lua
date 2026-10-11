@@ -315,12 +315,32 @@ end
 
 local function safelyDetachRef(current: Fiber, nearestMountedAncestor: Fiber): ()
 	local ref = current.ref
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/e98225485a124e35abc4cea82e6da944472ce7c7/packages/react-reconciler/src/ReactFiberCommitWork.new.js#L278-L334
+	local refCleanup = current.refCleanup
 	if ref ~= nil then
-		if typeof(ref) == "function" then
-			-- ROBLOX performance: eliminate the __DEV__ and invokeGuardedCallback, like React 18 has done
-			local ok, error_ = xpcall(ref, describeError)
+		if typeof(refCleanup) == "function" then
+			-- ROBLOX DEVIATION: React-Luau keeps this older reconciler's untimed
+			-- ref-detach path; the upstream layout-effect profiler wrapper is not backported.
+			local ok, error_ = xpcall(refCleanup, describeError)
+			current.refCleanup = nil
+			local finishedWork = current.alternate
+			if finishedWork ~= nil then
+				finishedWork.refCleanup = nil
+			end
 			if not ok then
 				captureCommitPhaseError(current, nearestMountedAncestor, error_)
+			end
+		elseif typeof(ref) == "function" then
+			-- ROBLOX performance: eliminate the __DEV__ and invokeGuardedCallback, like React 18 has done
+			local ok, result = xpcall(ref, describeError)
+			if not ok then
+				captureCommitPhaseError(current, nearestMountedAncestor, result)
+			elseif __DEV__ and typeof(result) == "function" then
+				console.error(
+					"Unexpected return value from a callback ref in %s. "
+						.. "A callback ref should not return a function.",
+					getComponentName(current.type) or "instance"
+				)
 			end
 		else
 			-- ROBLOX FIXME Luau: next line gets Expected type table, got 'RefObject | {| [string]: any, _stringRef: string? |}' instead
@@ -1221,7 +1241,8 @@ function commitAttachRef(finishedWork: Fiber)
 		--   instanceToUse = instance
 		-- end
 		if typeof(ref) == "function" then
-			ref(instanceToUse)
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/e98225485a124e35abc4cea82e6da944472ce7c7/packages/react-reconciler/src/ReactFiberCommitWork.new.js#L1513-L1541
+			finishedWork.refCleanup = ref(instanceToUse)
 		else
 			if __DEV__ then
 				-- ROBLOX FIXME: We won't be able to recognize a ref object by checking
@@ -1247,7 +1268,18 @@ end
 function commitDetachRef(current: Fiber)
 	local currentRef = current.ref
 	if currentRef ~= nil then
-		if typeof(currentRef) == "function" then
+		-- ROBLOX DEVIATION: React-Luau's React 17 work loop still calls this
+		-- unguarded detach path when a ref changes. Mirror safelyDetachRef's cleanup
+		-- selection and alternate nulling while retaining the existing error behavior.
+		local refCleanup = current.refCleanup
+		if typeof(refCleanup) == "function" then
+			current.refCleanup = nil
+			local finishedWork = current.alternate
+			if finishedWork ~= nil then
+				finishedWork.refCleanup = nil
+			end
+			refCleanup()
+		elseif typeof(currentRef) == "function" then
 			currentRef(nil)
 		else
 			currentRef.current = nil
