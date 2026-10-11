@@ -88,6 +88,7 @@ type FunctionComponentUpdateQueue = {
 
 local ReactTypes = require(Packages.Shared)
 type Wakeable = ReactTypes.Wakeable
+local REACT_ACTIVITY_TYPE = ReactTypes.ReactSymbols.REACT_ACTIVITY_TYPE
 
 type ReactPriorityLevel = ReactInternalTypes.ReactPriorityLevel
 local ReactFiberOffscreenComponent = require(script.Parent.ReactFiberOffscreenComponent)
@@ -105,7 +106,8 @@ local enableProfilerCommitHooks = ReactFeatureFlags.enableProfilerCommitHooks
 -- local enableFundamentalAPI = ReactFeatureFlags.enableFundamentalAPI
 local enableSuspenseCallback = ReactFeatureFlags.enableSuspenseCallback
 -- local enableScopeAPI = ReactFeatureFlags.enableScopeAPI
-local enableDoubleInvokingEffects = ReactFeatureFlags.enableDoubleInvokingEffects
+local enableSuspenseLayoutEffectSemantics =
+	ReactFeatureFlags.enableSuspenseLayoutEffectSemantics
 local enableNewTreeCleanupPath = ReactFeatureFlags.enableNewTreeCleanupPath
 local ReactWorkTags = require(script.Parent.ReactWorkTags)
 local FunctionComponent = ReactWorkTags.FunctionComponent
@@ -159,8 +161,13 @@ local recordPassiveEffectDuration = ReactProfilerTimer.recordPassiveEffectDurati
 local recordLayoutEffectDuration = ReactProfilerTimer.recordLayoutEffectDuration
 local startPassiveEffectTimer = ReactProfilerTimer.startPassiveEffectTimer
 local getCommitTime = ReactProfilerTimer.getCommitTime
-local ProfileMode = require(script.Parent.ReactTypeOfMode).ProfileMode
+local ReactTypeOfMode = require(script.Parent.ReactTypeOfMode)
+local NoMode = ReactTypeOfMode.NoMode
+local ConcurrentMode = ReactTypeOfMode.ConcurrentMode
+local ProfileMode = ReactTypeOfMode.ProfileMode
 local commitUpdateQueue = ReactUpdateQueueModule.commitUpdateQueue
+local deferHiddenCallbacks = ReactUpdateQueueModule.deferHiddenCallbacks
+local commitHiddenCallbacks = ReactUpdateQueueModule.commitHiddenCallbacks
 local getPublicInstance = ReactFiberHostConfig.getPublicInstance
 local supportsMutation = ReactFiberHostConfig.supportsMutation
 local supportsPersistence = ReactFiberHostConfig.supportsPersistence
@@ -246,7 +253,7 @@ end
 type Set<T> = { [T]: boolean }
 
 -- deviation: pre-declare functions when necessary
-local isHostParent, getHostSibling, insertOrAppendPlacementNode, insertOrAppendPlacementNodeIntoContainer, commitLayoutEffectsForHostRoot, commitLayoutEffectsForHostComponent, commitLayoutEffectsForClassComponent, unmountHostComponents, commitNestedUnmounts, commitUnmount
+local isHostParent, getHostSibling, insertOrAppendPlacementNode, insertOrAppendPlacementNodeIntoContainer, commitLayoutEffectsForHostRoot, commitLayoutEffectsForHostComponent, commitLayoutEffectsForClassComponent, disappearLayoutEffects, reappearLayoutEffects, unmountHostComponents, commitNestedUnmounts, commitUnmount
 
 -- Used to avoid traversing the return path to find the nearest Profiler ancestor during commit.
 local nearestProfilerOnStack: Fiber | nil = nil
@@ -522,6 +529,24 @@ function commitProfilerPassiveEffect(finishedRoot: FiberRoot, finishedWork: Fibe
 	end
 end
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/5e4e2dae0ba1836d26fa4e5edb4475d3b3e0a60c/packages/react-reconciler/src/ReactFiberCommitWork.new.js#L2157-L2173
+-- ROBLOX DEVIATION: The recursive layout traversal reaches the hidden
+-- Offscreen boundary before its children, so callbacks are deferred here.
+local function deferHiddenCallbacksInSubtree(subtreeRoot: Fiber): ()
+	if subtreeRoot.tag == ClassComponent then
+		local updateQueue: UpdateQueue<any>? = subtreeRoot.updateQueue
+		if updateQueue ~= nil then
+			deferHiddenCallbacks(updateQueue)
+		end
+	end
+
+	local child = subtreeRoot.child
+	while child ~= nil do
+		deferHiddenCallbacksInSubtree(child)
+		child = child.sibling
+	end
+end
+
 local function recursivelyCommitLayoutEffects(
 	finishedWork: Fiber,
 	finishedRoot: FiberRoot,
@@ -541,6 +566,35 @@ local function recursivelyCommitLayoutEffects(
 	end
 	local flags = finishedWork.flags
 	local tag = finishedWork.tag
+	if
+		enableSuspenseLayoutEffectSemantics
+		and tag == OffscreenComponent
+		and bit32.band(finishedWork.mode, ConcurrentMode) ~= NoMode
+	then
+		local isHidden = finishedWork.memoizedState ~= nil
+		if isHidden then
+			local child = finishedWork.child
+			while child ~= nil do
+				deferHiddenCallbacksInSubtree(child)
+				child = child.sibling
+			end
+			return
+		end
+
+		local current = finishedWork.alternate
+		local wasHidden = current ~= nil and current.memoizedState ~= nil
+		if wasHidden then
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/ReactFiberCommitWork.new.js#L2231-L2257
+			-- ROBLOX DEVIATION: React-Luau retains the recursive React 17 commit
+			-- traversal, so reappearing children are visited from this boundary.
+			local child = finishedWork.child
+			while child ~= nil do
+				reappearLayoutEffects(child)
+				child = child.sibling
+			end
+			return
+		end
+	end
 	if tag == Profiler then
 		local prevProfilerOnStack = nil
 		if enableProfilerTimer and enableProfilerCommitHooks then
@@ -1069,24 +1123,32 @@ function commitLayoutEffectsForHostComponent(finishedWork: Fiber)
 end
 
 local function hideOrUnhideAllChildren(finishedWork, isHidden)
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/ReactFiberCommitWork.new.js#L1118-L1182
+	local hostSubtreeRoot: Fiber? = nil
+
 	if supportsMutation then
 		-- We only have the top Fiber that was inserted but we need to recurse down its
 		-- children to find all the terminal nodes.
 		local node: Fiber = finishedWork
 		while true do
 			if node.tag == HostComponent then
-				local instance = node.stateNode
-				if isHidden then
-					hideInstance(instance)
-				else
-					unhideInstance(node.stateNode, node.memoizedProps)
+				if hostSubtreeRoot == nil then
+					hostSubtreeRoot = node
+					local instance = node.stateNode
+					if isHidden then
+						hideInstance(instance)
+					else
+						unhideInstance(node.stateNode, node.memoizedProps)
+					end
 				end
 			elseif node.tag == HostText then
-				local instance = node.stateNode
-				if isHidden then
-					hideTextInstance(instance)
-				else
-					unhideTextInstance(instance, node.memoizedProps)
+				if hostSubtreeRoot == nil then
+					local instance = node.stateNode
+					if isHidden then
+						hideTextInstance(instance)
+					else
+						unhideTextInstance(instance, node.memoizedProps)
+					end
 				end
 			elseif
 				(node.tag == OffscreenComponent or node.tag == LegacyHiddenComponent)
@@ -1108,7 +1170,13 @@ local function hideOrUnhideAllChildren(finishedWork, isHidden)
 				if node.return_ == nil or node.return_ == finishedWork then
 					return
 				end
+				if hostSubtreeRoot == node then
+					hostSubtreeRoot = nil
+				end
 				node = node.return_ :: Fiber -- ROBLOX TODO: Luau narrowing doesn't understand this loop until nil pattern
+			end
+			if hostSubtreeRoot == node then
+				hostSubtreeRoot = nil
 			end
 			-- ROBLOX FIXME: cast to any to silence analyze
 			(node.sibling :: Fiber).return_ = node.return_
@@ -1165,6 +1233,135 @@ function commitDetachRef(current: Fiber)
 		else
 			currentRef.current = nil
 		end
+	end
+end
+
+local function safelyCallComponentDidMount(
+	current: Fiber,
+	nearestMountedAncestor: Fiber?,
+	instance: any
+): ()
+	local ok, error_ = xpcall(function()
+		-- ROBLOX DEVIATION: Luau class lifecycle methods receive self with `:`.
+		instance:componentDidMount()
+	end, describeError)
+	if not ok then
+		captureCommitPhaseError(current, nearestMountedAncestor, error_)
+	end
+end
+
+local function safelyAttachRef(current: Fiber, nearestMountedAncestor: Fiber?): ()
+	local ok, error_ = xpcall(commitAttachRef, describeError, current)
+	if not ok then
+		captureCommitPhaseError(current, nearestMountedAncestor, error_)
+	end
+end
+
+local function safelyCallCommitHookLayoutEffectListMount(
+	current: Fiber,
+	nearestMountedAncestor: Fiber?
+): ()
+	local ok, error_ =
+		xpcall(commitHookEffectListMount, describeError, HookLayout, current)
+	if not ok then
+		captureCommitPhaseError(current, nearestMountedAncestor, error_)
+	end
+end
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/ReactFiberCommitWork.new.js#L2306-L2377
+-- ROBLOX DEVIATION: React-Luau's commit phase is recursive, so the upstream
+-- iterative disappear traversal is represented by an equivalent recursive walk.
+function disappearLayoutEffects(subtreeRoot: Fiber): ()
+	local tag = subtreeRoot.tag
+	if
+		tag == FunctionComponent
+		or tag == ForwardRef
+		or tag == MemoComponent
+		or tag == SimpleMemoComponent
+		or tag == Block
+	then
+		commitHookEffectListUnmount(HookLayout, subtreeRoot, subtreeRoot.return_)
+	elseif tag == ClassComponent then
+		safelyDetachRef(subtreeRoot, subtreeRoot.return_ :: Fiber)
+		local instance = subtreeRoot.stateNode
+		if typeof(instance.componentWillUnmount) == "function" then
+			safelyCallComponentWillUnmount(subtreeRoot, instance, subtreeRoot.return_)
+		end
+	elseif tag == HostComponent then
+		safelyDetachRef(subtreeRoot, subtreeRoot.return_ :: Fiber)
+	elseif tag == OffscreenComponent and subtreeRoot.memoizedState ~= nil then
+		return
+	end
+
+	local child = subtreeRoot.child
+	while child ~= nil do
+		disappearLayoutEffects(child)
+		child = child.sibling
+	end
+end
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/ReactFiberCommitWork.new.js#L2379-L2435
+-- ROBLOX DEVIATION: React-Luau's commit phase is recursive, so the upstream
+-- iterative reappear traversal is represented by an equivalent recursive walk.
+function reappearLayoutEffects(
+	subtreeRoot: Fiber,
+	-- ROBLOX DEVIATION: nil keeps the existing Suspense and Activity callers,
+	-- which always commit work-in-progress class callbacks.
+	includeWorkInProgressEffects: boolean?
+): ()
+	if subtreeRoot.tag == OffscreenComponent and subtreeRoot.memoizedState ~= nil then
+		return
+	end
+
+	local child = subtreeRoot.child
+	while child ~= nil do
+		reappearLayoutEffects(child, includeWorkInProgressEffects)
+		child = child.sibling
+	end
+
+	local tag = subtreeRoot.tag
+	if
+		tag == FunctionComponent
+		or tag == ForwardRef
+		or tag == SimpleMemoComponent
+		or tag == Block
+	then
+		safelyCallCommitHookLayoutEffectListMount(subtreeRoot, subtreeRoot.return_)
+	elseif tag == ClassComponent then
+		local instance = subtreeRoot.stateNode
+		if typeof(instance.componentDidMount) == "function" then
+			safelyCallComponentDidMount(subtreeRoot, subtreeRoot.return_, instance)
+		end
+		safelyAttachRef(subtreeRoot, subtreeRoot.return_)
+		local updateQueue: UpdateQueue<any>? = subtreeRoot.updateQueue
+		if updateQueue ~= nil then
+			commitHiddenCallbacks(subtreeRoot, updateQueue, instance)
+			if includeWorkInProgressEffects ~= false then
+				commitUpdateQueue(subtreeRoot, updateQueue, instance)
+			end
+		end
+	elseif tag == HostComponent then
+		safelyAttachRef(subtreeRoot, subtreeRoot.return_)
+	end
+end
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L3095-L3099
+local function disappearLayoutEffectsForDEVValidation(finishedWork: Fiber): ()
+	if __DEV__ then
+		disappearLayoutEffects(finishedWork)
+	end
+end
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L3289-L3302
+-- ROBLOX DEVIATION: React-Luau's recursive reappear walk reads neither the
+-- root nor the current Fiber; the parameters keep the upstream signature.
+local function reappearLayoutEffectsForDEVValidation(
+	_finishedRoot: FiberRoot,
+	_current: Fiber | nil,
+	finishedWork: Fiber
+): ()
+	if __DEV__ then
+		reappearLayoutEffects(finishedWork, false)
 	end
 end
 
@@ -1992,7 +2189,32 @@ local function commitWork(current: Fiber | nil, finishedWork: Fiber)
 	then
 		local newState: OffscreenState | nil = finishedWork.memoizedState
 		local isHidden = newState ~= nil
+		local wasHidden = current ~= nil and current.memoizedState ~= nil
+
+		if
+			enableSuspenseLayoutEffectSemantics
+			and finishedWork.tag == OffscreenComponent
+			and isHidden
+			and not wasHidden
+			and bit32.band(finishedWork.mode, ConcurrentMode) ~= NoMode
+		then
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/ReactFiberCommitWork.new.js#L2130-L2154
+			-- ROBLOX DEVIATION: React-Luau calls commitWork from its recursive
+			-- mutation traversal, so disappearing effects start here.
+			local child = finishedWork.child
+			while child ~= nil do
+				disappearLayoutEffects(child)
+				child = child.sibling
+			end
+		end
+
 		hideOrUnhideAllChildren(finishedWork, isHidden)
+		if finishedWork.elementType == REACT_ACTIVITY_TYPE then
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCommitWork.js#L2514-L2516
+			-- ROBLOX DEVIATION: Activity uses the existing Suspense retry cache
+			-- because this port has no transition or marker queues.
+			attachSuspenseRetryListeners(finishedWork)
+		end
 		return
 	end
 	invariant(
@@ -2007,20 +2229,6 @@ function commitSuspenseComponent(finishedWork: Fiber)
 
 	if newState ~= nil then
 		markCommitTimeOfFallback()
-
-		if supportsMutation then
-			-- Hide the Offscreen component that contains the primary children. TODO:
-			-- Ideally, this effect would have been scheduled on the Offscreen fiber
-			-- itself. That's how unhiding works: the Offscreen component schedules an
-			-- effect on itself. However, in this case, the component didn't complete,
-			-- so the fiber was never added to the effect list in the normal path. We
-			-- could have appended it to the effect list in the Suspense component's
-			-- second pass, but doing it this way is less complicated. This would be
-			-- simpler if we got rid of the effect list and traversed the tree, like
-			-- we're planning to do.
-			local primaryChildParent: Fiber = finishedWork.child :: any
-			hideOrUnhideAllChildren(primaryChildParent, true)
-		end
 	end
 
 	if enableSuspenseCallback and newState ~= nil then
@@ -2126,8 +2334,80 @@ function commitResetTextContent(current: Fiber): ()
 	resetTextContent(current.stateNode)
 end
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCommitWork.js#L4938-L4973
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L5286-L5334
+-- ROBLOX DEVIATION: The client port traverses only hook Fibers and
+-- identifies Activity using its public element type.
+local function disconnectPassiveEffect(fiber: Fiber): ()
+	if
+		fiber.tag == OffscreenComponent
+		and fiber.elementType == REACT_ACTIVITY_TYPE
+		and fiber.memoizedState ~= nil
+	then
+		return
+	end
+
+	if
+		fiber.tag == FunctionComponent
+		or fiber.tag == ForwardRef
+		or fiber.tag == SimpleMemoComponent
+		or fiber.tag == Block
+	then
+		commitHookEffectListUnmount(HookPassive, fiber, fiber.return_)
+	end
+
+	local child = fiber.child
+	while child ~= nil do
+		disconnectPassiveEffect(child)
+		child = child.sibling
+	end
+end
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCommitWork.js#L4158-L4321
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L4505-L4533
+-- ROBLOX DEVIATION: Atomic effects, cache pools, tracing, profiling,
+-- resources, and View Transitions are outside this client port.
+local function reconnectPassiveEffects(fiber: Fiber): ()
+	if
+		fiber.tag == OffscreenComponent
+		and fiber.elementType == REACT_ACTIVITY_TYPE
+		and fiber.memoizedState ~= nil
+	then
+		return
+	end
+
+	local child = fiber.child
+	while child ~= nil do
+		reconnectPassiveEffects(child)
+		child = child.sibling
+	end
+
+	if
+		fiber.tag == FunctionComponent
+		or fiber.tag == ForwardRef
+		or fiber.tag == SimpleMemoComponent
+		or fiber.tag == Block
+	then
+		commitHookEffectListMount(HookPassive, fiber)
+	end
+end
+
 local function commitPassiveUnmount(finishedWork: Fiber): ()
 	if
+		finishedWork.tag == OffscreenComponent
+		and finishedWork.elementType == REACT_ACTIVITY_TYPE
+	then
+		local current = finishedWork.alternate
+		local isHidden = finishedWork.memoizedState ~= nil
+		local wasHidden = current ~= nil and current.memoizedState ~= nil
+		if current ~= nil and isHidden and not wasHidden then
+			local child = finishedWork.child
+			while child ~= nil do
+				disconnectPassiveEffect(child)
+				child = child.sibling
+			end
+		end
+	elseif
 		finishedWork.tag == FunctionComponent
 		or finishedWork.tag == ForwardRef
 		or finishedWork.tag == SimpleMemoComponent
@@ -2181,6 +2461,20 @@ end
 
 local function commitPassiveMount(finishedRoot: FiberRoot, finishedWork: Fiber): ()
 	if
+		finishedWork.tag == OffscreenComponent
+		and finishedWork.elementType == REACT_ACTIVITY_TYPE
+	then
+		local current = finishedWork.alternate
+		local isHidden = finishedWork.memoizedState ~= nil
+		local wasHidden = current ~= nil and current.memoizedState ~= nil
+		if not isHidden and wasHidden then
+			local child = finishedWork.child
+			while child ~= nil do
+				reconnectPassiveEffects(child)
+				child = child.sibling
+			end
+		end
+	elseif
 		finishedWork.tag == FunctionComponent
 		or finishedWork.tag == ForwardRef
 		or finishedWork.tag == SimpleMemoComponent
@@ -2212,114 +2506,104 @@ local function commitPassiveMount(finishedRoot: FiberRoot, finishedWork: Fiber):
 	end
 end
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L5542-L5558
 function invokeLayoutEffectMountInDEV(fiber: Fiber): ()
-	if __DEV__ and enableDoubleInvokingEffects then
+	if __DEV__ then
+		-- We don't need to re-check StrictEffectsMode here.
+		-- This function is only called if that check has already passed.
 		if
 			fiber.tag == FunctionComponent
 			or fiber.tag == ForwardRef
 			or fiber.tag == SimpleMemoComponent
 			or fiber.tag == Block
 		then
-			invokeGuardedCallback(
-				nil,
+			-- ROBLOX DEVIATION: upstream commitHookEffectListMount captures its own
+			-- errors; React-Luau's does not, so the call is guarded here.
+			local ok, error_ = xpcall(
 				commitHookEffectListMount,
-				nil,
+				describeError,
 				bit32.bor(HookLayout, HookHasEffect),
 				fiber
 			)
-			if hasCaughtError() then
-				local mountError = clearCaughtError()
-				captureCommitPhaseError(fiber, fiber.return_, mountError)
+			if not ok then
+				captureCommitPhaseError(fiber, fiber.return_, error_)
 			end
-			return
+		elseif fiber.tag == ClassComponent then
+			local instance = fiber.stateNode
+			if typeof(instance.componentDidMount) == "function" then
+				safelyCallComponentDidMount(fiber, fiber.return_, instance)
+			end
 		end
-	elseif fiber.tag == ClassComponent then
-		local instance = fiber.stateNode
-		invokeGuardedCallback(nil, instance.componentDidMount, instance)
-		if hasCaughtError() then
-			local mountError = clearCaughtError()
-			captureCommitPhaseError(fiber, fiber.return_, mountError)
-		end
-		return
 	end
 end
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L5561-L5574
 function invokePassiveEffectMountInDEV(fiber: Fiber): ()
-	if __DEV__ and enableDoubleInvokingEffects then
+	if __DEV__ then
+		-- We don't need to re-check StrictEffectsMode here.
+		-- This function is only called if that check has already passed.
 		if
 			fiber.tag == FunctionComponent
 			or fiber.tag == ForwardRef
 			or fiber.tag == SimpleMemoComponent
 			or fiber.tag == Block
 		then
-			invokeGuardedCallback(
-				nil,
+			-- ROBLOX DEVIATION: upstream commitHookEffectListMount captures its own
+			-- errors; React-Luau's does not, so the call is guarded here.
+			local ok, error_ = xpcall(
 				commitHookEffectListMount,
-				nil,
+				describeError,
 				bit32.bor(HookPassive, HookHasEffect),
 				fiber
 			)
-			if hasCaughtError() then
-				local mountError = clearCaughtError()
-				captureCommitPhaseError(fiber, fiber.return_, mountError)
+			if not ok then
+				captureCommitPhaseError(fiber, fiber.return_, error_)
 			end
-			return
 		end
 	end
 end
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L5576-L5600
 function invokeLayoutEffectUnmountInDEV(fiber: Fiber): ()
-	if __DEV__ and enableDoubleInvokingEffects then
+	if __DEV__ then
+		-- We don't need to re-check StrictEffectsMode here.
+		-- This function is only called if that check has already passed.
 		if
 			fiber.tag == FunctionComponent
 			or fiber.tag == ForwardRef
 			or fiber.tag == SimpleMemoComponent
 			or fiber.tag == Block
 		then
-			invokeGuardedCallback(
-				nil,
-				commitHookEffectListUnmount,
-				nil,
+			commitHookEffectListUnmount(
 				bit32.bor(HookLayout, HookHasEffect),
 				fiber,
 				fiber.return_
 			)
-			if hasCaughtError() then
-				local unmountError = clearCaughtError()
-				captureCommitPhaseError(fiber, fiber.return_, unmountError)
+		elseif fiber.tag == ClassComponent then
+			local instance = fiber.stateNode
+			if typeof(instance.componentWillUnmount) == "function" then
+				safelyCallComponentWillUnmount(fiber, instance, fiber.return_)
 			end
-			return
 		end
-	elseif fiber.tag == ClassComponent then
-		local instance = fiber.stateNode
-		if typeof(instance.componentWillUnmount) == "function" then
-			safelyCallComponentWillUnmount(fiber, instance, fiber.return_)
-		end
-		return
 	end
 end
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberCommitWork.js#L5602-L5618
 function invokePassiveEffectUnmountInDEV(fiber: Fiber): ()
-	if __DEV__ and enableDoubleInvokingEffects then
+	if __DEV__ then
+		-- We don't need to re-check StrictEffectsMode here.
+		-- This function is only called if that check has already passed.
 		if
 			fiber.tag == FunctionComponent
 			or fiber.tag == ForwardRef
 			or fiber.tag == SimpleMemoComponent
 			or fiber.tag == Block
 		then
-			invokeGuardedCallback(
-				nil,
-				commitHookEffectListUnmount,
-				nil,
+			commitHookEffectListUnmount(
 				bit32.bor(HookPassive, HookHasEffect),
 				fiber,
 				fiber.return_
 			)
-			if hasCaughtError() then
-				local unmountError = clearCaughtError()
-				captureCommitPhaseError(fiber, fiber.return_, unmountError)
-			end
-			return
 		end
 	end
 end
@@ -2341,6 +2625,10 @@ return {
 	invokeLayoutEffectUnmountInDEV = invokeLayoutEffectUnmountInDEV,
 	invokePassiveEffectMountInDEV = invokePassiveEffectMountInDEV,
 	invokePassiveEffectUnmountInDEV = invokePassiveEffectUnmountInDEV,
+	disappearLayoutEffectsForDEVValidation = disappearLayoutEffectsForDEVValidation,
+	reappearLayoutEffectsForDEVValidation = reappearLayoutEffectsForDEVValidation,
+	disconnectPassiveEffect = disconnectPassiveEffect,
+	reconnectPassiveEffects = reconnectPassiveEffects,
 	isSuspenseBoundaryBeingHidden = isSuspenseBoundaryBeingHidden,
 	recursivelyCommitLayoutEffects = recursivelyCommitLayoutEffects,
 }

@@ -222,13 +222,9 @@ it("should allow update state inside of componentWillMount", function()
 
 	local instance = React.createElement(StatefulComponent)
 	jestExpect(function()
-		jestExpect(function()
-			ReactNoop.act(function()
-				instance = ReactNoop.render(instance)
-			end)
-		end).toErrorDev({
-			"Using UNSAFE_componentWillMount in strict mode is not recommended",
-		}, { withoutStack = true })
+		ReactNoop.act(function()
+			instance = ReactNoop.render(instance)
+		end)
 	end).never.toThrow()
 end)
 
@@ -317,8 +313,7 @@ it("should correctly determine if a component is mounted", function()
 		jestExpect(isMounted()).toBe(true)
 	end).toErrorDev({
 		"Component is accessing isMounted inside its render()",
-		"UNSAFE_componentWillMount in strict mode is not recommended",
-	}, { withoutStack = 1 })
+	})
 end)
 
 it("should correctly determine if a nil component is mounted", function()
@@ -352,8 +347,7 @@ it("should correctly determine if a nil component is mounted", function()
 		jestExpect(isMounted()).toBe(true)
 	end).toErrorDev({
 		"Component is accessing isMounted inside its render()",
-		"UNSAFE_componentWillMount in strict mode is not recommended",
-	}, { withoutStack = 1 })
+	})
 end)
 
 it("isMounted should return false when unmounted", function()
@@ -470,8 +464,7 @@ it("should carry through each of the phases of setup", function()
 		end)
 	end).toErrorDev({
 		"LifeCycleComponent is accessing isMounted inside its render() function",
-		"UNSAFE_componentWillMount in strict mode is not recommended",
-	}, { withoutStack = 1 })
+	})
 
 	-- getInitialState
 	jestExpect(_testJournal.returnedFromGetInitialState).toEqual(
@@ -669,22 +662,9 @@ it("should call nested legacy lifecycle methods in the right order", function()
 	end
 
 	log = {}
-	-- ROBLOX deviation START: Wrap to catch warnings (see deviation below)
-	jestExpect(function()
-		-- ROBLOX deviation END
-		ReactNoop.act(function()
-			ReactNoop.render(React.createElement(Outer, { x = 1 }))
-		end)
-		-- ROBLOX deviation START: The upstream equivalents of these tests run with react-dom
-		-- using the legacy root, so they don't throw warnings related to strict
-		-- mode; we compromise by keeping it in concurrent mode to better match
-		-- production, but anticipating the warnings
-	end).toErrorDev({
-		"Using UNSAFE_componentWillMount in strict mode is not recommended",
-		"Using UNSAFE_componentWillReceiveProps in strict mode is not recommended",
-		"Using UNSAFE_componentWillUpdate in strict mode is not recommended",
-	}, { withoutStack = true })
-	-- ROBLOX deviation END
+	ReactNoop.act(function()
+		ReactNoop.render(React.createElement(Outer, { x = 1 }))
+	end)
 	jestExpect(log).toEqual({
 		"outer componentWillMount",
 		"inner componentWillMount",
@@ -929,11 +909,7 @@ it(
 			end)
 		end).toErrorDev({
 			"Unsafe legacy lifecycles will not be called for components using new component APIs.",
-			-- deviation: ReactNoop runs with a StrictMode root and logs more warnings
-			"Using UNSAFE_componentWillMount in strict mode is not recommended",
-			"Using UNSAFE_componentWillReceiveProps in strict mode is not recommended",
-			"Using UNSAFE_componentWillUpdate in strict mode is not recommended",
-		}, { withoutStack = 3 })
+		})
 		ReactNoop.act(function()
 			ReactNoop.render(React.createElement(Component, { value = 2 }))
 		end)
@@ -970,8 +946,7 @@ it(
 					.. "  componentWillUpdate\n\n"
 					.. "The above lifecycles should be removed. Learn more about this warning here:\n"
 					.. "https://reactjs.org/link/unsafe-component-lifecycles",
-				"UNSAFE_componentWillReceiveProps in strict mode is not recommended",
-			}, { withoutStack = 1 })
+			})
 		end).toWarnDev({
 			"componentWillMount has been renamed",
 			"componentWillUpdate has been renamed",
@@ -998,8 +973,7 @@ it(
 					.. "  UNSAFE_componentWillMount\n\n"
 					.. "The above lifecycles should be removed. Learn more about this warning here:\n"
 					.. "https://reactjs.org/link/unsafe-component-lifecycles",
-				"UNSAFE_componentWillMount in strict mode is not recommended",
-			}, { withoutStack = 1 })
+			})
 		end)
 
 		local WillMountAndUpdate = React.Component:extend("WillMountAndUpdate")
@@ -1027,8 +1001,7 @@ it(
 					.. "  UNSAFE_componentWillUpdate\n\n"
 					.. "The above lifecycles should be removed. Learn more about this warning here:\n"
 					.. "https://reactjs.org/link/unsafe-component-lifecycles",
-				"UNSAFE_componentWillUpdate in strict mode is not recommended",
-			}, { withoutStack = 1 })
+			})
 		end).toWarnDev({ "componentWillMount has been renamed" }, {
 			withoutStack = true,
 		})
@@ -1092,8 +1065,7 @@ it(
 					.. "  componentWillUpdate\n\n"
 					.. "The above lifecycles should be removed. Learn more about this warning here:\n"
 					.. "https://reactjs.org/link/unsafe-component-lifecycles",
-				"UNSAFE_componentWillReceiveProps in strict mode is not recommended",
-			}, { withoutStack = 1 })
+			})
 		end).toWarnDev({
 			"componentWillMount has been renamed",
 			"componentWillUpdate has been renamed",
@@ -1120,8 +1092,7 @@ it(
 				.. "  UNSAFE_componentWillMount\n\n"
 				.. "The above lifecycles should be removed. Learn more about this warning here:\n"
 				.. "https://reactjs.org/link/unsafe-component-lifecycles",
-			"UNSAFE_componentWillMount in strict mode is not recommended",
-		}, { withoutStack = 1 })
+		})
 
 		local WillMountAndUpdate = React.Component:extend("WillMountAndUpdate")
 		function WillMountAndUpdate:init()
@@ -1147,8 +1118,7 @@ it(
 					.. "  UNSAFE_componentWillUpdate\n\n"
 					.. "The above lifecycles should be removed. Learn more about this warning here:\n"
 					.. "https://reactjs.org/link/unsafe-component-lifecycles",
-				"UNSAFE_componentWillUpdate in strict mode is not recommended",
-			}, { withoutStack = 1 })
+			})
 		end).toWarnDev({ "componentWillMount has been renamed" }, {
 			withoutStack = true,
 		})
@@ -1317,19 +1287,13 @@ it("should invoke both deprecated and new lifecycles if both are present", funct
 	end
 
 	jestExpect(function()
-		jestExpect(function()
-			ReactNoop.act(function()
-				ReactNoop.render(React.createElement(MyComponent, { foo = "bar" }))
-			end)
-		end).toWarnDev({
-			"componentWillMount has been renamed",
-			"componentWillReceiveProps has been renamed",
-			"componentWillUpdate has been renamed",
-		}, { withoutStack = true })
-	end).toErrorDev({
-		"Using UNSAFE_componentWillMount in strict mode is not recommended",
-		"Using UNSAFE_componentWillReceiveProps in strict mode is not recommended",
-		"Using UNSAFE_componentWillUpdate in strict mode is not recommended",
+		ReactNoop.act(function()
+			ReactNoop.render(React.createElement(MyComponent, { foo = "bar" }))
+		end)
+	end).toWarnDev({
+		"componentWillMount has been renamed",
+		"componentWillReceiveProps has been renamed",
+		"componentWillUpdate has been renamed",
 	}, { withoutStack = true })
 	jestExpect(log).toEqual({ "componentWillMount", "UNSAFE_componentWillMount" })
 

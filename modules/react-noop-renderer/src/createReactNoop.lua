@@ -819,7 +819,7 @@ local function createReactNoop(reconciler, useMutation: boolean)
 					children = {},
 				}
 				rootContainers[rootID] = container
-				root = NoopRenderer.createContainer(container, tag, false)
+				root = NoopRenderer.createContainer(container, tag, false, nil, false)
 				roots[rootID] = root
 			end
 			return root.current.stateNode.containerInfo
@@ -834,7 +834,7 @@ local function createReactNoop(reconciler, useMutation: boolean)
 			}
 			idCounter += 1
 			local fiberRoot =
-				NoopRenderer.createContainer(container, ConcurrentRoot, false, nil)
+				NoopRenderer.createContainer(container, ConcurrentRoot, false, nil, false)
 			return {
 				_Scheduler = Scheduler,
 				render = function(children)
@@ -857,7 +857,7 @@ local function createReactNoop(reconciler, useMutation: boolean)
 			}
 			idCounter += 1
 			local fiberRoot =
-				NoopRenderer.createContainer(container, BlockingRoot, false, nil)
+				NoopRenderer.createContainer(container, BlockingRoot, false, nil, false)
 			return {
 				_Scheduler = Scheduler,
 				render = function(children)
@@ -880,7 +880,7 @@ local function createReactNoop(reconciler, useMutation: boolean)
 			}
 			idCounter += 1
 			local fiberRoot =
-				NoopRenderer.createContainer(container, LegacyRoot, false, nil)
+				NoopRenderer.createContainer(container, LegacyRoot, false, nil, false)
 			return {
 				_Scheduler = Scheduler,
 				render = function(children)

@@ -147,7 +147,10 @@ createRootImpl = function(container: Container, tag: RootTag, options: any)
 		and options.hydrationOptions ~= nil
 		and options.hydrationOptions.mutableSources
 	) or nil
-	local root = createContainer(container, tag, hydrate, hydrationCallbacks)
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-dom/src/client/ReactDOMRoot.js#L182-L216
+	local isStrictMode = options ~= nil and options.unstable_strictMode == true
+	local root =
+		createContainer(container, tag, hydrate, hydrationCallbacks, isStrictMode)
 	markContainerAsRoot(root.current, container)
 	-- local containerNodeType = container.nodeType
 

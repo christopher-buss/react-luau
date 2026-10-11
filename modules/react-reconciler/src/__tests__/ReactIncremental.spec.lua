@@ -2210,19 +2210,12 @@ describe("ReactIncremental", function()
 		}
 
 		ReactNoop.render(React.createElement(Recurse))
-		jestExpect(function()
-			return jestExpect(Scheduler).toFlushAndYield({
-				"Recurse {}",
-				'Recurse {"n":2}',
-				'Recurse {"n":1}',
-				'Recurse {"n":0}',
-			})
-		end).toErrorDev(
-			"Legacy context API has been detected within a strict-mode tree.\n\n"
-				.. "The old API will be supported in all 16.x releases, but applications "
-				.. "using it should migrate to the new version.\n\n"
-				.. "Please update the following components: Recurse"
-		)
+		jestExpect(Scheduler).toFlushAndYield({
+			"Recurse {}",
+			'Recurse {"n":2}',
+			'Recurse {"n":1}',
+			'Recurse {"n":0}',
+		})
 	end)
 
 	if not ReactFeatureFlags.disableModulePatternComponents then
@@ -2338,18 +2331,11 @@ describe("ReactIncremental", function()
 			'ShowLocale {"locale":"fr"}',
 			'ShowLocale {"locale":"fr"}',
 		})
-		jestExpect(function()
-			return jestExpect(Scheduler).toFlushAndYield({
-				'ShowLocale {"locale":"fr"}',
-				"Intl {}",
-				'ShowLocale {"locale":"ru"}',
-			})
-		end).toErrorDev(
-			"Legacy context API has been detected within a strict-mode tree.\n\n"
-				.. "The old API will be supported in all 16.x releases, but applications "
-				.. "using it should migrate to the new version.\n\n"
-				.. "Please update the following components: Intl, ShowLocale"
-		)
+		jestExpect(Scheduler).toFlushAndYield({
+			'ShowLocale {"locale":"fr"}',
+			"Intl {}",
+			'ShowLocale {"locale":"ru"}',
+		})
 	end)
 	-- ROBLOX TODO: PropTypes
 	xit("reads context when setState is below the provider", function()
@@ -2633,14 +2619,7 @@ describe("ReactIncremental", function()
 
 			-- Init
 			ReactNoop.render(React.createElement(Root))
-			jestExpect(function()
-				return jestExpect(Scheduler).toFlushWithoutYielding()
-			end).toErrorDev(
-				"Legacy context API has been detected within a strict-mode tree.\n\n"
-					.. "The old API will be supported in all 16.x releases, but applications "
-					.. "using it should migrate to the new version.\n\n"
-					.. "Please update the following components: Child"
-			)
+			jestExpect(Scheduler).toFlushWithoutYielding()
 
 			-- Trigger an update in the middle of the tree
 			instance:setState({})
@@ -2697,14 +2676,7 @@ describe("ReactIncremental", function()
 
 			-- Init
 			ReactNoop.render(React.createElement(Root))
-			jestExpect(function()
-				return jestExpect(Scheduler).toFlushWithoutYielding()
-			end).toErrorDev(
-				"Legacy context API has been detected within a strict-mode tree.\n\n"
-					.. "The old API will be supported in all 16.x releases, but applications "
-					.. "using it should migrate to the new version.\n\n"
-					.. "Please update the following components: ContextProvider"
-			)
+			jestExpect(Scheduler).toFlushWithoutYielding()
 
 			-- Trigger an update in the middle of the tree
 			-- This is necessary to reproduce the error as it currently exists.
@@ -2750,25 +2722,15 @@ describe("ReactIncremental", function()
 		end
 
 		ReactNoop.render(React.createElement(MyComponent))
-		jestExpect(function()
-			return jestExpect(Scheduler).toFlushAndYield({
-				"render",
-				"componentDidMount",
-				"shouldComponentUpdate",
-				"render",
-				"componentDidUpdate",
-				"shouldComponentUpdate",
-				"render",
-				"componentDidUpdate",
-			})
-		end).toErrorDev({
-			"Using UNSAFE_componentWillReceiveProps in strict mode is not recommended",
-			"Legacy context API has been detected within a strict-mode tree.\n\n"
-				.. "The old API will be supported in all 16.x releases, but applications "
-				.. "using it should migrate to the new version.\n\n"
-				.. "Please update the following components: MyComponent",
-		}, {
-			withoutStack = 1,
+		jestExpect(Scheduler).toFlushAndYield({
+			"render",
+			"componentDidMount",
+			"shouldComponentUpdate",
+			"render",
+			"componentDidUpdate",
+			"shouldComponentUpdate",
+			"render",
+			"componentDidUpdate",
 		})
 	end)
 	-- ROBLOX: xited upstream

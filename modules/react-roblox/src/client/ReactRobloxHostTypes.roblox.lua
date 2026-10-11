@@ -82,6 +82,7 @@ export type RootType = {
 
 export type RootOptions = {
 	hydrate: boolean?,
+	unstable_strictMode: boolean?,
 	hydrationOptions: {
 		onHydrated: (suspenseNode: any) -> ()?,
 		onDeleted: (suspenseNode: any) -> ()?,

@@ -45,6 +45,7 @@ type Lanes = ReactFiberLanes.Lanes
 local getComponentName = require(Packages.Shared).getComponentName
 local ReactFiberFlags = require(script.Parent.ReactFiberFlags)
 local Placement = ReactFiberFlags.Placement
+local PlacementDEV = ReactFiberFlags.PlacementDEV
 local Deletion = ReactFiberFlags.Deletion
 local ReactSymbols = require(Packages.Shared).ReactSymbols
 local getIteratorFn = ReactSymbols.getIteratorFn
@@ -423,6 +424,7 @@ local function ChildReconciler(shouldTrackSideEffects)
 		return clone
 	end
 
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactChildFiber.js#L511-L549
 	local function placeChild(
 		newFiber: Fiber,
 		lastPlacedIndex: number,
@@ -437,7 +439,9 @@ local function ChildReconciler(shouldTrackSideEffects)
 		if current ~= nil then
 			local oldIndex = current.index
 			if oldIndex < lastPlacedIndex then
-				-- This is a move.
+				-- This is a move. The fiber already existed, so this is not a new
+				-- mount; don't set PlacementDEV, which would cause StrictMode to
+				-- re-run the effects in its subtree as if it had remounted.
 				newFiber.flags = bit32.bor(newFiber.flags, Placement)
 				return lastPlacedIndex
 			else
@@ -446,7 +450,7 @@ local function ChildReconciler(shouldTrackSideEffects)
 			end
 		else
 			-- This is an insertion.
-			newFiber.flags = bit32.bor(newFiber.flags, Placement)
+			newFiber.flags = bit32.bor(newFiber.flags, Placement, PlacementDEV)
 			return lastPlacedIndex
 		end
 	end
@@ -455,7 +459,7 @@ local function ChildReconciler(shouldTrackSideEffects)
 		-- This is simpler for the single child case. We only need to do a
 		-- placement for inserting new children.
 		if shouldTrackSideEffects and newFiber.alternate == nil then
-			newFiber.flags = bit32.bor(newFiber.flags, Placement)
+			newFiber.flags = bit32.bor(newFiber.flags, Placement, PlacementDEV)
 		end
 		return newFiber
 	end

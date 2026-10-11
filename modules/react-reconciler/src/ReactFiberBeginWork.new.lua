@@ -145,7 +145,7 @@ local ReactTypeOfMode = require(script.Parent.ReactTypeOfMode)
 local ConcurrentMode = ReactTypeOfMode.ConcurrentMode
 local NoMode = ReactTypeOfMode.NoMode
 local ProfileMode = ReactTypeOfMode.ProfileMode
-local StrictMode = ReactTypeOfMode.StrictMode
+local StrictLegacyMode = ReactTypeOfMode.StrictLegacyMode
 local BlockingMode = ReactTypeOfMode.BlockingMode
 local ReactFiberHostConfig = require(script.Parent.ReactFiberHostConfig)
 local shouldSetTextContent = ReactFiberHostConfig.shouldSetTextContent
@@ -411,7 +411,7 @@ local function updateForwardRef(
 			renderWithHooks(current, workInProgress, render, nextProps, ref, renderLanes)
 		if
 			debugRenderPhaseSideEffectsForStrictMode
-			and bit32.band(workInProgress.mode, StrictMode) ~= 0
+			and bit32.band(workInProgress.mode, StrictLegacyMode) ~= 0
 		then
 			disableLogs()
 			local ok, result = xpcall(
@@ -682,6 +682,25 @@ local function updateOffscreenComponent(
 	local nextProps: OffscreenProps = workInProgress.pendingProps
 	local nextChildren = nextProps.children
 
+	if
+		__DEV__
+		and current == nil
+		and workInProgress.elementType == ReactSymbols.REACT_ACTIVITY_TYPE
+		and (nextProps :: any).hidden ~= nil
+	then
+		local hiddenProp = (nextProps :: any).hidden
+		console.error(
+			'<Activity> doesn\'t accept a hidden prop. Use mode="hidden" instead.\n'
+				.. "- <Activity %s>\n"
+				.. "+ <Activity %s>",
+			if hiddenProp == true
+				then "hidden"
+				elseif hiddenProp == false then "hidden={false}"
+				else "hidden={...}",
+			if hiddenProp then 'mode="hidden"' else 'mode="visible"'
+		)
+	end
+
 	local prevState: OffscreenState?
 	if current ~= nil then
 		-- ROBLOX FIXME: remove :: recast once Luau understands if-statement nil checks
@@ -692,6 +711,21 @@ local function updateOffscreenComponent(
 		nextProps.mode == "hidden"
 		or nextProps.mode == "unstable-defer-without-hiding"
 	then
+		if
+			workInProgress.elementType == ReactSymbols.REACT_ACTIVITY_TYPE
+			and bit32.band(workInProgress.flags, DidCapture) ~= NoFlags
+		then
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberBeginWork.js#L647-L680
+			-- ROBLOX DEVIATION: The client port restores the last committed
+			-- children without importing hidden context, caches, or hydration.
+			workInProgress.flags =
+				bit32.band(workInProgress.flags, bit32.bnot(DidCapture))
+			workInProgress.child = if current ~= nil then current.child else nil
+			workInProgress.flags = bit32.bor(workInProgress.flags, ReactFiberFlags.Update)
+			pushRenderLanes(workInProgress, renderLanes)
+			return nil
+		end
+
 		if bit32.band(workInProgress.mode, ConcurrentMode) == NoMode then
 			-- In legacy sync mode, don't defer the subtree. Render it now.
 			-- TODO: Figure out what we should do in Blocking mode.
@@ -874,7 +908,7 @@ function updateFunctionComponent(
 		)
 		if
 			debugRenderPhaseSideEffectsForStrictMode
-			and bit32.band(workInProgress.mode, StrictMode) ~= 0
+			and bit32.band(workInProgress.mode, StrictLegacyMode) ~= 0
 		then
 			disableLogs()
 			local ok, result = xpcall(
@@ -1140,7 +1174,7 @@ function finishClassComponent(
 			nextChildren = instance:render()
 			if
 				debugRenderPhaseSideEffectsForStrictMode
-				and bit32.band(workInProgress.mode, StrictMode) ~= 0
+				and bit32.band(workInProgress.mode, StrictLegacyMode) ~= 0
 			then
 				disableLogs()
 				-- deviation: Pass instance so that render can access self
@@ -1563,7 +1597,7 @@ local function mountIndeterminateComponent(
 			end
 		end
 
-		if bit32.band(workInProgress.mode, StrictMode) ~= 0 then
+		if bit32.band(workInProgress.mode, StrictLegacyMode) ~= 0 then
 			ReactStrictModeWarnings.recordLegacyContextWarning(workInProgress)
 		end
 
@@ -1700,7 +1734,7 @@ local function mountIndeterminateComponent(
 
 			if
 				debugRenderPhaseSideEffectsForStrictMode
-				and bit32.band(workInProgress.mode, StrictMode) ~= 0
+				and bit32.band(workInProgress.mode, StrictLegacyMode) ~= 0
 			then
 				disableLogs()
 				local ok, result = xpcall(
@@ -3252,7 +3286,9 @@ function remountFiber(
 			table.insert(deletions, current)
 		end
 
-		newWorkInProgress.flags = bit32.bor(newWorkInProgress.flags, Placement)
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberBeginWork.js#L3927
+		newWorkInProgress.flags =
+			bit32.bor(newWorkInProgress.flags, Placement, ReactFiberFlags.PlacementDEV)
 
 		-- Restart work from the new fiber.
 		return newWorkInProgress

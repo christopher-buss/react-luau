@@ -96,4 +96,11 @@ exports.MountLayoutDev = --[[               ]]
 exports.MountPassiveDev = --[[              ]]
 	0b100000000000000000
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberFlags.js#L93-L94
+-- ROBLOX DEVIATION: React-Luau keeps its React 17 bit layout, so PlacementDEV
+-- takes the next free bit.
+-- Flag used to identify newly inserted fibers. It isn't reset after commit unlike `Placement`.
+exports.PlacementDEV = --[[                 ]]
+	0b1000000000000000000
+
 return exports

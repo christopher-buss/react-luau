@@ -20,7 +20,7 @@ local ReactCurrentFiber = require(script.Parent.ReactCurrentFiber)
 local resetCurrentDebugFiberInDEV = ReactCurrentFiber.resetCurrentFiber
 local setCurrentDebugFiberInDEV = ReactCurrentFiber.setCurrentFiber
 local getComponentName = require(Packages.Shared).getComponentName
-local StrictMode = require(script.Parent.ReactTypeOfMode).StrictMode
+local StrictLegacyMode = require(script.Parent.ReactTypeOfMode).StrictLegacyMode
 
 type Set<T> = { [T]: boolean }
 type Array<T> = { [number]: T }
@@ -43,7 +43,7 @@ if ReactGlobals.__DEV__ then
 		-- ROBLOX FIXME Luau: Luau needs to understand while not nil loops
 		local node: Fiber? = fiber
 		while node ~= nil do
-			if bit32.band(node.mode, StrictMode) ~= 0 then
+			if bit32.band(node.mode, StrictLegacyMode) ~= 0 then
 				maybeStrictRoot = node
 			end
 			node = node.return_
@@ -90,7 +90,7 @@ if ReactGlobals.__DEV__ then
 		end
 
 		if
-			bit32.band(fiber.mode, StrictMode) ~= 0
+			bit32.band(fiber.mode, StrictLegacyMode) ~= 0
 			and typeof(instance.UNSAFE_componentWillMount) == "function"
 		then
 			table.insert(pendingUNSAFE_ComponentWillMountWarnings, fiber)
@@ -105,7 +105,7 @@ if ReactGlobals.__DEV__ then
 		end
 
 		if
-			bit32.band(fiber.mode, StrictMode) ~= 0
+			bit32.band(fiber.mode, StrictLegacyMode) ~= 0
 			and typeof(instance.UNSAFE_componentWillReceiveProps) == "function"
 		then
 			table.insert(pendingUNSAFE_ComponentWillReceivePropsWarnings, fiber)
@@ -120,7 +120,7 @@ if ReactGlobals.__DEV__ then
 		end
 
 		if
-			bit32.band(fiber.mode, StrictMode) ~= 0
+			bit32.band(fiber.mode, StrictLegacyMode) ~= 0
 			and typeof(instance.UNSAFE_componentWillUpdate) == "function"
 		then
 			table.insert(pendingUNSAFE_ComponentWillUpdateWarnings, fiber)

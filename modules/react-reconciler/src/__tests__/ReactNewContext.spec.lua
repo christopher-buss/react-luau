@@ -1228,14 +1228,7 @@ describe("Context.Provider", function()
 				React.createElement(App, { ref = appRef, value = 1 }, children)
 			)
 		)
-		jestExpect(function()
-			jestExpect(Scheduler).toFlushAndYield({ "LegacyProvider", "App", "Child" })
-		end).toErrorDev(
-			"Legacy context API has been detected within a strict-mode tree.\n\n"
-				.. "The old API will be supported in all 16.x releases, but applications "
-				.. "using it should migrate to the new version.\n\n"
-				.. "Please update the following components: LegacyProvider"
-		)
+		jestExpect(Scheduler).toFlushAndYield({ "LegacyProvider", "App", "Child" })
 		jestExpect(ReactNoop.getChildren()).toEqual({ span("Child") })
 
 		-- Update App with same value (should bail out)
@@ -1599,9 +1592,10 @@ describe("readContext", function()
 		ReactNoop.render(React.createElement(Cls))
 		jestExpect(function()
 			jestExpect(Scheduler).toFlushWithoutYielding()
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/__tests__/ReactNewContext-test.js#L1238-L1241
+			-- A concurrent root is no longer strict, so render runs once and
+			-- queues one updater.
 		end).toErrorDev({
-			"Context can only be read while React is rendering",
-			-- A second warning comes from to setStates being added to the queue.
 			"Context can only be read while React is rendering",
 			"Cannot update during an existing state transition",
 		})

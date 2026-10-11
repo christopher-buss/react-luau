@@ -152,8 +152,7 @@ it("should correctly determine if a component is mounted", function()
 		jestExpect(isMounted()).toBe(true)
 	end).toErrorDev({
 		"Component is accessing isMounted inside its render()",
-		"UNSAFE_componentWillMount in strict mode is not recommended",
-	}, { withoutStack = 1 })
+	})
 end)
 
 it("should correctly determine if a nil component is mounted", function()
@@ -187,8 +186,7 @@ it("should correctly determine if a nil component is mounted", function()
 		jestExpect(isMounted()).toBe(true)
 	end).toErrorDev({
 		"Component is accessing isMounted inside its render()",
-		"UNSAFE_componentWillMount in strict mode is not recommended",
-	}, { withoutStack = 1 })
+	})
 end)
 
 it("should carry through each of the phases of setup", function()
@@ -259,8 +257,7 @@ it("should carry through each of the phases of setup", function()
 		end)
 	end).toErrorDev({
 		"LifeCycleComponent is accessing isMounted inside its render() function",
-		"UNSAFE_componentWillMount in strict mode is not recommended",
-	}, { withoutStack = 1 })
+	})
 
 	-- getInitialState
 	jestExpect(_testJournal.returnedFromGetInitialState).toEqual(
@@ -385,19 +382,9 @@ it("should call nested legacy lifecycle methods in the right order", function()
 	end
 
 	log = {}
-	jestExpect(function()
-		ReactNoop.act(function()
-			ReactNoop.render(React.createElement(Outer, { x = 1 }))
-		end)
-	end).toErrorDev({
-		-- ROBLOX: The upstream equivalents of these tests run with react-dom
-		-- using the legacy root, so they don't throw warnings related to strict
-		-- mode; we compromise by keeping it in concurrent mode to better match
-		-- production, but anticipating the warnings
-		"Using UNSAFE_componentWillMount in strict mode is not recommended",
-		"Using UNSAFE_componentWillReceiveProps in strict mode is not recommended",
-		"Using UNSAFE_componentWillUpdate in strict mode is not recommended",
-	}, { withoutStack = true })
+	ReactNoop.act(function()
+		ReactNoop.render(React.createElement(Outer, { x = 1 }))
+	end)
 	jestExpect(log).toEqual({
 		"outer componentWillMount",
 		"inner componentWillMount",

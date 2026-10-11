@@ -78,8 +78,6 @@ describe("SchedulingProfiler", function()
 		ReactFeatureFlags.deferRenderPhaseUpdateToNextBatch = true
 		ReactFeatureFlags.enableEagerRootListeners = true
 
-		ReactFeatureFlags.enableDoubleInvokingEffects = false
-
 		React = require(Packages.React)
 
 		-- ReactNoop must be imported after ReactTestRenderer!

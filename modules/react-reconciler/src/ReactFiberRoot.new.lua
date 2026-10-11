@@ -106,7 +106,9 @@ exports.createFiberRoot = function(
 	containerInfo: any,
 	tag: RootTag,
 	hydrate: boolean,
-	hydrationCallbacks: SuspenseHydrationCallbacks?
+	hydrationCallbacks: SuspenseHydrationCallbacks?,
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberRoot.js#L163
+	isStrictMode: boolean
 ): FiberRoot
 	local root: FiberRoot = FiberRootNode(containerInfo, tag, hydrate)
 	if enableSuspenseCallback then
@@ -115,7 +117,7 @@ exports.createFiberRoot = function(
 
 	-- Cyclic construction. This cheats the type system right now because
 	-- stateNode is any.
-	local uninitializedFiber = createHostRootFiber(tag)
+	local uninitializedFiber = createHostRootFiber(tag, isStrictMode)
 	root.current = uninitializedFiber
 	uninitializedFiber.stateNode = root
 

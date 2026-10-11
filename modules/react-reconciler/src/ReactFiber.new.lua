@@ -96,7 +96,8 @@ local NoMode = ReactTypeOfMode.NoMode
 local ConcurrentMode = ReactTypeOfMode.ConcurrentMode
 local DebugTracingMode = ReactTypeOfMode.DebugTracingMode
 local ProfileMode = ReactTypeOfMode.ProfileMode
-local StrictMode = ReactTypeOfMode.StrictMode
+local StrictLegacyMode = ReactTypeOfMode.StrictLegacyMode
+local StrictEffectsMode = ReactTypeOfMode.StrictEffectsMode
 local BlockingMode = ReactTypeOfMode.BlockingMode
 local ReactSymbols = require(Packages.Shared).ReactSymbols
 local REACT_FORWARD_REF_TYPE = ReactSymbols.REACT_FORWARD_REF_TYPE
@@ -115,6 +116,7 @@ local REACT_LAZY_TYPE = ReactSymbols.REACT_LAZY_TYPE
 -- local REACT_SCOPE_TYPE = ReactSymbols.REACT_SCOPE_TYPE
 local REACT_OFFSCREEN_TYPE = ReactSymbols.REACT_OFFSCREEN_TYPE
 local REACT_LEGACY_HIDDEN_TYPE = ReactSymbols.REACT_LEGACY_HIDDEN_TYPE
+local REACT_ACTIVITY_TYPE = ReactSymbols.REACT_ACTIVITY_TYPE
 
 -- deviation: We probably don't have to worry about this scenario, since we use
 -- simple tables as maps
@@ -135,7 +137,7 @@ local REACT_LEGACY_HIDDEN_TYPE = ReactSymbols.REACT_LEGACY_HIDDEN_TYPE
 -- 	end
 -- end
 
-local createFiberFromScope, createFiberFromProfiler, createFiberFromFragment, createFiberFromFundamental, createFiberFromSuspense, createFiberFromOffscreen, createFiberFromLegacyHidden, createFiberFromSuspenseList
+local createFiberFromScope, createFiberFromProfiler, createFiberFromFragment, createFiberFromFundamental, createFiberFromSuspense, createFiberFromOffscreen, createFiberFromActivity, createFiberFromLegacyHidden, createFiberFromSuspenseList
 
 local debugCounter = 1
 
@@ -481,12 +483,21 @@ local function resetWorkInProgress(workInProgress: Fiber, renderLanes: Lanes)
 	return workInProgress
 end
 
-local function createHostRootFiber(tag: RootTag): Fiber
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiber.js#L529-L548
+local function createHostRootFiber(tag: RootTag, isStrictMode: boolean): Fiber
 	local mode
 	if tag == ConcurrentRoot then
-		mode = bit32.bor(ConcurrentMode, BlockingMode, StrictMode)
+		mode = bit32.bor(ConcurrentMode, BlockingMode)
+		if isStrictMode == true then
+			mode = bit32.bor(mode, StrictLegacyMode, StrictEffectsMode)
+		end
 	elseif tag == BlockingRoot then
-		mode = bit32.bor(BlockingMode, StrictMode)
+		-- ROBLOX DEVIATION: React 19 removed blocking roots. React-Luau keeps
+		-- them; like a concurrent root, a blocking root is strict only on request.
+		mode = BlockingMode
+		if isStrictMode == true then
+			mode = bit32.bor(mode, StrictLegacyMode, StrictEffectsMode)
+		end
 	else
 		mode = NoMode
 	end
@@ -535,8 +546,15 @@ local function createFiberFromTypeAndProps(
 			fiberTag = Mode
 			mode = bit32.bor(mode, DebugTracingMode)
 		elseif type_ == REACT_STRICT_MODE_TYPE then
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiber.js#L602-L609
 			fiberTag = Mode
-			mode = bit32.bor(mode, StrictMode)
+			mode = bit32.bor(mode, StrictLegacyMode)
+			-- ROBLOX DEVIATION: React-Luau keeps blocking roots, which are not
+			-- legacy roots, so BlockingMode also admits Strict Effects.
+			if bit32.band(mode, BlockingMode) ~= NoMode then
+				-- Strict effects should never run on legacy roots
+				mode = bit32.bor(mode, StrictEffectsMode)
+			end
 		elseif type_ == REACT_PROFILER_TYPE then
 			return createFiberFromProfiler(pendingProps, mode, lanes, key)
 		elseif type_ == REACT_SUSPENSE_TYPE then
@@ -545,6 +563,8 @@ local function createFiberFromTypeAndProps(
 			-- 	return createFiberFromSuspenseList(pendingProps, mode, lanes, key)
 		elseif type_ == REACT_OFFSCREEN_TYPE then
 			return createFiberFromOffscreen(pendingProps, mode, lanes, key)
+		elseif type_ == REACT_ACTIVITY_TYPE then
+			return createFiberFromActivity(pendingProps, mode, lanes, key)
 		elseif type_ == REACT_LEGACY_HIDDEN_TYPE then
 			return createFiberFromLegacyHidden(pendingProps, mode, lanes, key)
 			-- elseif type_ == REACT_SCOPE_TYPE then
@@ -870,6 +890,28 @@ function createFiberFromOffscreen(
 	return fiber
 end
 
+function createFiberFromActivity(
+	pendingProps: OffscreenProps,
+	mode: TypeOfMode,
+	lanes: Lanes,
+	key: string?
+): Fiber
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiber.js#L834-L843
+	-- ROBLOX DEVIATION: This client-only port compiles Activity directly
+	-- to the existing Offscreen Fiber. Upstream's extra Activity wrapper owns
+	-- dehydrated-boundary behavior, which ReactRoblox does not support.
+	return createFiber(
+		OffscreenComponent,
+		pendingProps,
+		key,
+		mode,
+		REACT_ACTIVITY_TYPE,
+		if __DEV__ then REACT_ACTIVITY_TYPE else nil,
+		nil,
+		lanes
+	)
+end
+
 function createFiberFromLegacyHidden(
 	pendingProps: OffscreenProps,
 	mode: TypeOfMode,
@@ -1013,6 +1055,7 @@ return {
 	createFiberFromSuspense = createFiberFromSuspense,
 	createFiberFromSuspenseList = createFiberFromSuspenseList,
 	createFiberFromOffscreen = createFiberFromOffscreen,
+	createFiberFromActivity = createFiberFromActivity,
 	createFiberFromLegacyHidden = createFiberFromLegacyHidden,
 	createFiberFromText = createFiberFromText,
 	createFiberFromHostInstanceForDeletion = createFiberFromHostInstanceForDeletion,

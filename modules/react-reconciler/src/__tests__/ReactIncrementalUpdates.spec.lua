@@ -478,14 +478,9 @@ describe("ReactIncrementalUpdates", function()
 			end
 
 			ReactNoop.render(React.createElement(Foo))
-			jestExpect(function()
-				return jestExpect(Scheduler).toFlushAndYield({
-					"render",
-				})
-			end).toErrorDev(
-				"Using UNSAFE_componentWillReceiveProps in strict mode is not recommended",
-				{ withoutStack = true }
-			)
+			jestExpect(Scheduler).toFlushAndYield({
+				"render",
+			})
 			ReactNoop.flushSync(function()
 				instance:setState({
 					a = "a",

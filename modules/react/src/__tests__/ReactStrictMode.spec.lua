@@ -102,9 +102,9 @@ describe("ReactStrictMode", function()
 			return nil
 		end
 
-		-- ROBLOX deviation: use ReactNoop.render to render instead of ReactDOM.render
+		-- ROBLOX deviation: a ReactNoop legacy root replaces ReactDOM.render
 		ReactNoop.act(function()
-			ReactNoop.render(
+			ReactNoop.renderLegacySyncRoot(
 				React.createElement(
 					React.StrictMode,
 					nil,
@@ -135,9 +135,9 @@ describe("ReactStrictMode", function()
 		log = {}
 		shouldComponentUpdate = true
 
-		-- ROBLOX deviation: use ReactNoop.render to render instead of ReactDOM.render
+		-- ROBLOX deviation: a ReactNoop legacy root replaces ReactDOM.render
 		ReactNoop.act(function()
-			ReactNoop.render(
+			ReactNoop.renderLegacySyncRoot(
 				React.createElement(
 					React.StrictMode,
 					nil,
@@ -168,9 +168,9 @@ describe("ReactStrictMode", function()
 		log = {}
 		shouldComponentUpdate = false
 
-		-- ROBLOX deviation: use ReactNoop.render to render instead of ReactDOM.render
+		-- ROBLOX deviation: a ReactNoop legacy root replaces ReactDOM.render
 		ReactNoop.act(function()
-			ReactNoop.render(
+			ReactNoop.renderLegacySyncRoot(
 				React.createElement(
 					React.StrictMode,
 					nil,
@@ -282,9 +282,9 @@ describe("ReactStrictMode", function()
 			)
 		end
 
-		-- ROBLOX deviation: use ReactNoop.render to render instead of ReactDOM.render
+		-- ROBLOX deviation: a ReactNoop legacy root replaces ReactDOM.render
 		ReactNoop.act(function()
-			ReactNoop.render(React.createElement(Root))
+			ReactNoop.renderLegacySyncRoot(React.createElement(Root))
 		end)
 
 		if ReactGlobals.__DEV__ then
@@ -309,9 +309,9 @@ describe("ReactStrictMode", function()
 		log = {}
 		shouldComponentUpdate = true
 
-		-- ROBLOX deviation: use ReactNoop.render to render instead of ReactDOM.render
+		-- ROBLOX deviation: a ReactNoop legacy root replaces ReactDOM.render
 		ReactNoop.act(function()
-			ReactNoop.render(React.createElement(Root))
+			ReactNoop.renderLegacySyncRoot(React.createElement(Root))
 		end)
 
 		if ReactGlobals.__DEV__ then
@@ -336,9 +336,9 @@ describe("ReactStrictMode", function()
 		log = {}
 		shouldComponentUpdate = false
 
-		-- ROBLOX deviation: use ReactNoop.render to render instead of ReactDOM.render
+		-- ROBLOX deviation: a ReactNoop legacy root replaces ReactDOM.render
 		ReactNoop.act(function()
-			ReactNoop.render(React.createElement(Root))
+			ReactNoop.renderLegacySyncRoot(React.createElement(Root))
 		end)
 
 		if ReactGlobals.__DEV__ then
@@ -404,6 +404,8 @@ describe("ReactStrictMode", function()
 	end)
 end)
 describe("Concurrent Mode", function()
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react/src/__tests__/ReactStrictMode-test.js#L583-L766
+	-- A concurrent root is not strict, so these roots render inside StrictMode.
 	beforeEach(function()
 		jest.resetModules()
 		React = require(script.Parent.Parent)
@@ -457,7 +459,9 @@ describe("Concurrent Mode", function()
 			-- ROBLOX deviation: using ReactNoop in place of ReactDOM
 			local root = ReactNoop.createRoot()
 
-			root.render(React.createElement(AsyncRoot))
+			root.render(
+				React.createElement(React.StrictMode, nil, React.createElement(AsyncRoot))
+			)
 			jestExpect(function()
 				return Scheduler.unstable_flushAll()
 			end).toErrorDev({
@@ -481,7 +485,9 @@ Please update the following components: Bar, Foo]],
 
 Please update the following components: AsyncRoot]],
 			}, { withoutStack = true })
-			root.render(React.createElement(AsyncRoot))
+			root.render(
+				React.createElement(React.StrictMode, nil, React.createElement(AsyncRoot))
+			)
 			Scheduler.unstable_flushAll()
 		end
 	)
@@ -510,7 +516,9 @@ Please update the following components: AsyncRoot]],
 		-- ROBLOX deviation: using ReactNoop in place of ReactDOM
 		local root = ReactNoop.createRoot()
 
-		root.render(React.createElement(AsyncRoot))
+		root.render(
+			React.createElement(React.StrictMode, nil, React.createElement(AsyncRoot))
+		)
 		jestExpect(function()
 			jestExpect(function()
 				return Scheduler.unstable_flushAll()
@@ -560,7 +568,9 @@ Please update the following components: Parent]],
 
 Please update the following components: Parent]],
 		}, { withoutStack = true })
-		root.render(React.createElement(AsyncRoot))
+		root.render(
+			React.createElement(React.StrictMode, nil, React.createElement(AsyncRoot))
+		)
 		Scheduler.unstable_flushAll()
 	end)
 	it("should warn about components not present during the initial render", function()
@@ -593,7 +603,13 @@ Please update the following components: Parent]],
 		-- ROBLOX deviation: using ReactNoop in place of ReactDOM
 		local root = ReactNoop.createRoot()
 
-		root.render(React.createElement(AsyncRoot, { foo = true }))
+		root.render(
+			React.createElement(
+				React.StrictMode,
+				nil,
+				React.createElement(AsyncRoot, { foo = true })
+			)
+		)
 		jestExpect(function()
 			return Scheduler.unstable_flushAll()
 		end).toErrorDev(
@@ -601,7 +617,13 @@ Please update the following components: Parent]],
 			{ withoutStack = true }
 		)
 
-		root.render(React.createElement(AsyncRoot, { foo = false }))
+		root.render(
+			React.createElement(
+				React.StrictMode,
+				nil,
+				React.createElement(AsyncRoot, { foo = false })
+			)
+		)
 		jestExpect(function()
 			return Scheduler.unstable_flushAll()
 		end).toErrorDev(
@@ -609,10 +631,22 @@ Please update the following components: Parent]],
 			{ withoutStack = true }
 		)
 
-		root.render(React.createElement(AsyncRoot, { foo = true }))
+		root.render(
+			React.createElement(
+				React.StrictMode,
+				nil,
+				React.createElement(AsyncRoot, { foo = true })
+			)
+		)
 		Scheduler.unstable_flushAll()
 
-		root.render(React.createElement(AsyncRoot, { foo = false }))
+		root.render(
+			React.createElement(
+				React.StrictMode,
+				nil,
+				React.createElement(AsyncRoot, { foo = false })
+			)
+		)
 		Scheduler.unstable_flushAll()
 	end)
 	it('should also warn inside of "strict" mode trees', function()
@@ -970,5 +1004,66 @@ describe("context legacy", function()
 		--         ReactNoop.render(React.createElement(Root))
 		--     end).toErrorDev('Warning: Legacy context API has been detected within a strict-mode tree.' .. '\n\nThe old API will be supported in all 16.x releases, but applications ' .. 'using it should migrate to the new version.' .. '\n\nPlease update the following components: ' .. 'FunctionalLegacyContextConsumer, LegacyContextConsumer, LegacyContextProvider' .. '\n\nLearn more about this warning here: ' .. 'https://reactjs.org/link/legacy-context' .. '\n    in LegacyContextProvider (at **)' .. '\n    in div (at **)' .. '\n    in Root (at **)')
 		--     ReactNoop.render(React.createElement(Root))
+	end)
+end)
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react/src/__tests__/ReactStrictMode-test.js#L1058-L1296
+-- ROBLOX DEVIATION: Only the Strict Effects case of this React 19 group is
+-- ported. The render and class cases need React 19's console behavior, which
+-- React-Luau does not implement. ReactRoblox replaces ReactDOMClient.
+describe("context legacy", function()
+	describe("console logs logging", function()
+		local ReactRoblox
+		local console
+
+		beforeEach(function()
+			jest.resetModules()
+			React = require(Packages.React)
+			ReactRoblox = require(Packages.Dev.ReactRoblox)
+			console = require(Packages.Shared).console
+
+			-- These tests are specifically testing console.log.
+			jest.spyOn(console, "log").mockImplementation(function() end)
+		end)
+
+		JestGlobals.afterEach(function()
+			console.log.mockRestore()
+		end)
+
+		it("does not disable logs for effect double invoke", function()
+			local create = 0
+			local cleanup = 0
+			local function Foo()
+				React.useEffect(function()
+					create += 1
+					console.log("foo create " .. create)
+					return function()
+						cleanup += 1
+						console.log("foo cleanup " .. cleanup)
+					end
+				end)
+				return nil
+			end
+
+			local container = Instance.new("Folder")
+			local root = ReactRoblox.createRoot(container)
+			ReactRoblox.act(function()
+				root:render(
+					React.createElement(React.StrictMode, nil, React.createElement(Foo))
+				)
+			end)
+			jestExpect(create).toBe(if ReactGlobals.__DEV__ then 2 else 1)
+			jestExpect(cleanup).toBe(if ReactGlobals.__DEV__ then 1 else 0)
+			jestExpect(console.log).toHaveBeenCalledTimes(
+				if ReactGlobals.__DEV__ then 3 else 1
+			)
+			-- Note: we should display the first log because otherwise
+			-- there is a risk of suppressing warnings when they happen,
+			-- and on the next render they'd get deduplicated and ignored.
+			jestExpect(console.log).toHaveBeenCalledWith("foo create 1")
+			if ReactGlobals.__DEV__ then
+				jestExpect(console.log).toHaveBeenCalledWith("foo cleanup 1")
+			end
+		end)
 	end)
 end)
