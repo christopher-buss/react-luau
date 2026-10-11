@@ -1187,6 +1187,24 @@ local function hideOrUnhideAllChildren(finishedWork, isHidden)
 	end
 end
 
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d68bce19c9409ed70604d1d16b70b68ce71dc4a/packages/react-reconciler/src/ReactFiberCommitWork.js#L295-L297
+-- ROBLOX DEVIATION: React-Luau's mutation traversal has no direct-parent
+-- visibility context, so read it from the ancestor fibers.
+local function hasHiddenOffscreenDirectParent(finishedWork: Fiber): boolean
+	local parent = finishedWork.return_
+	while parent ~= nil do
+		if parent.tag == HostComponent or parent.tag == HostRoot then
+			return false
+		end
+		if (parent.tag == OffscreenComponent or parent.tag == LegacyHiddenComponent)
+			and parent.memoizedState ~= nil then
+			return true
+		end
+		parent = parent.return_
+	end
+	return false
+end
+
 function commitAttachRef(finishedWork: Fiber)
 	local ref = finishedWork.ref
 	if ref ~= nil then
@@ -2182,7 +2200,9 @@ local function commitWork(current: Fiber | nil, finishedWork: Fiber)
 			end
 		end
 
-		hideOrUnhideAllChildren(finishedWork, isHidden)
+		if isHidden or not hasHiddenOffscreenDirectParent(finishedWork) then
+			hideOrUnhideAllChildren(finishedWork, isHidden)
+		end
 		if finishedWork.elementType == REACT_ACTIVITY_TYPE then
 			-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCommitWork.js#L2514-L2516
 			-- ROBLOX DEVIATION: Activity uses the existing Suspense retry cache
