@@ -459,12 +459,13 @@ function throwException(
 	-- We didn't find a boundary that could handle this type of exception. Start
 	-- over and traverse parent path again, this time treating the exception
 	-- as an error.
-	renderDidError()
-
 	value = createCapturedValue(value, sourceFiber)
 	local workInProgress = returnFiber
 	repeat
 		if workInProgress.tag == HostRoot then
+			-- ROBLOX DEVIATION: React 17 records root recovery only after the
+			-- ancestor walk reaches a visible error boundary.
+			renderDidError()
 			local errorInfo = value
 			workInProgress.flags = bit32.bor(workInProgress.flags, ShouldCapture)
 			local lane = pickArbitraryLane(rootRenderLanes)
@@ -490,12 +491,25 @@ function throwException(
 					)
 				)
 			then
+				renderDidError()
 				workInProgress.flags = bit32.bor(workInProgress.flags, ShouldCapture)
 				local lane = pickArbitraryLane(rootRenderLanes)
 				workInProgress.lanes = mergeLanes(workInProgress.lanes, lane)
 				-- Schedule the error boundary to re-render using updated state
 				local update = createClassErrorUpdate(workInProgress, errorInfo, lane)
 				enqueueCapturedUpdate(workInProgress, update)
+				return
+			end
+		elseif workInProgress.tag == ReactWorkTags.OffscreenComponent then
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/717e70843e68db648d2fc75c57d1a61465a9f7f9/packages/react-reconciler/src/ReactFiberThrow.js#L682-L697
+			-- ROBLOX DEVIATION: Capture only the public Activity Offscreen;
+			-- legacy hidden fibers retain their existing error behavior.
+			if
+				workInProgress.elementType
+					== require(Packages.Shared).ReactSymbols.REACT_ACTIVITY_TYPE
+				and workInProgress.memoizedState ~= nil
+			then
+				workInProgress.flags = bit32.bor(workInProgress.flags, ShouldCapture)
 				return
 			end
 		end
