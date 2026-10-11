@@ -82,4 +82,86 @@ describe("Roblox Fragment observer adapters", function()
 		task.wait()
 		expect(entries).toEqual({ "second" })
 	end)
+
+	it(
+		"cancels initial delivery on unobserve or disconnect and can observe again",
+		function()
+			local deliveries = 0
+			local observer = ReactRoblox.createResizeObserver(function()
+				deliveries += 1
+			end)
+			table.insert(observers, observer)
+			local target = Instance.new("Frame")
+			target.Parent = container
+			observer:observe(target)
+			observer:unobserve(target)
+			task.wait()
+			task.wait()
+			expect(deliveries).toBe(0)
+			observer:observe(target)
+			observer:disconnect()
+			task.wait()
+			task.wait()
+			expect(deliveries).toBe(0)
+			observer:observe(target)
+			task.wait()
+			task.wait()
+			expect(deliveries).toBe(1)
+		end
+	)
+
+	it("normalizes margins and thresholds and rejects unsupported options", function()
+		local observer = ReactRoblox.createIntersectionObserver(
+			function() end,
+			{ rootMargin = "1px 2%", threshold = { 1, 0.5, 0.5, 0 } }
+		)
+		table.insert(observers, observer)
+		expect(observer.rootMargin).toBe("1px 2% 1px 2%")
+		expect(observer.thresholds).toEqual({ 0, 0.5, 1 })
+		expect(function()
+			ReactRoblox.createIntersectionObserver(function() end, { threshold = 2 })
+		end).toThrow(
+			"IntersectionObserver thresholds must be finite numbers between 0 and 1"
+		)
+		expect(function()
+			ReactRoblox.createIntersectionObserver(function() end, { rootMargin = "1em" })
+		end).toThrow(
+			"IntersectionObserver rootMargin must contain one to four px or % values"
+		)
+		expect(function()
+			ReactRoblox.createIntersectionObserver(
+				function() end,
+				{ trackVisibility = true }
+			)
+		end).toThrow(
+			"Unsupported Fragment intersection observer option: trackVisibility"
+		)
+	end)
+
+	it(
+		"releases a deleted resize owner immediately while keeping another owner",
+		function()
+			local entries = {}
+			local observer = ReactRoblox.createResizeObserver(function(records)
+				for _, entry in records do
+					table.insert(entries, entry.target.Name)
+				end
+			end)
+			table.insert(observers, observer)
+			local first = Instance.new("Frame")
+			first.Name = "first"
+			first.Parent = container
+			local second = Instance.new("Frame")
+			second.Name = "second"
+			second.Parent = container
+			local owner = {}
+			observer:observe(first, owner)
+			observer:observe(second, owner)
+			observer:observe(second)
+			observer:releaseOwnerAfterExit(owner)
+			task.wait()
+			task.wait()
+			expect(entries).toEqual({ "second" })
+		end
+	)
 end)

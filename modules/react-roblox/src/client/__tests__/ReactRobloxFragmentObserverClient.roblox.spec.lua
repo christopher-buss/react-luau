@@ -237,4 +237,82 @@ clientDescribe("Roblox Fragment observer client geometry", function()
 			)
 		end
 	)
+
+	it(
+		"delivers the final intersection exit when an observed Fragment is deleted",
+		function()
+			local React = require(Packages.React)
+			local fragmentRef = React.createRef()
+			local ratios = {}
+			local observer = ReactRoblox.createIntersectionObserver(function(entries)
+				for _, entry in entries do
+					table.insert(ratios, entry.intersectionRatio)
+				end
+			end)
+			table.insert(observers, observer)
+			local root = ReactRoblox.createRoot(gui)
+			ReactRoblox.act(function()
+				root:render(
+					React.createElement(
+						React.Fragment,
+						{ ref = fragmentRef },
+						React.createElement("Frame", {
+							Position = UDim2.fromOffset(100, 100),
+							Size = UDim2.fromOffset(40, 40),
+						})
+					)
+				)
+			end)
+			fragmentRef.current:observeUsing(observer)
+			settle()
+			ReactRoblox.act(function()
+				root:render(nil)
+			end)
+			settle()
+			expect(ratios).toEqual({ 1, 0 })
+			ReactRoblox.act(function()
+				root:unmount()
+			end)
+		end
+	)
+
+	it(
+		"lets a saved deleted Fragment cancel pending exits during effect cleanup",
+		function()
+			local React = require(Packages.React)
+			local fragmentRef = React.createRef()
+			local ratios = {}
+			local observer = ReactRoblox.createIntersectionObserver(function(entries)
+				for _, entry in entries do
+					table.insert(ratios, entry.intersectionRatio)
+				end
+			end)
+			table.insert(observers, observer)
+			local root = ReactRoblox.createRoot(gui)
+			ReactRoblox.act(function()
+				root:render(
+					React.createElement(
+						React.Fragment,
+						{ ref = fragmentRef },
+						React.createElement("Frame", {
+							Position = UDim2.fromOffset(100, 100),
+							Size = UDim2.fromOffset(40, 40),
+						})
+					)
+				)
+			end)
+			local savedFragment = fragmentRef.current
+			savedFragment:observeUsing(observer)
+			settle()
+			ReactRoblox.act(function()
+				root:render(nil)
+			end)
+			savedFragment:unobserveUsing(observer)
+			settle()
+			expect(ratios).toEqual({ 1 })
+			ReactRoblox.act(function()
+				root:unmount()
+			end)
+		end
+	)
 end)

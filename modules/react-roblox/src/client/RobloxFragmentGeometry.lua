@@ -85,6 +85,8 @@ local function validateTarget(gui: GuiObject)
 	end
 end
 
+-- ROBLOX DEVIATION: Intersection measures GUI visibility and geometric clipping;
+-- engine painting, occlusion, transparency, and ZIndex are not observable here.
 local function getIntersection(
 	gui: GuiObject,
 	root: GuiBase2d?,

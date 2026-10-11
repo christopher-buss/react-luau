@@ -393,6 +393,12 @@ local function createObserver(callback, intersectionOptions)
 		end
 	end
 
+	function observer:releaseOwnerAfterExit(owner)
+		for _, target in table.clone(order) do
+			self:unobserveAfterExit(target, owner)
+		end
+	end
+
 	function observer:disconnect()
 		for _, target in table.clone(order) do
 			releaseTarget(target)
