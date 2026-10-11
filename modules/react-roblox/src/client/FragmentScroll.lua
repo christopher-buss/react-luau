@@ -2,6 +2,7 @@
 -- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js#L3762-L3848
 local exports = {}
 local Packages = script.Parent.Parent.Parent
+local Geometry = require(script.Parent.RobloxFragmentGeometry)
 -- ROBLOX DEVIATION: Native canvas scrolling implements the browser's nearest
 -- inline alignment, including targets larger than the scrolling window.
 local function nearestHorizontalOffset(left, width, windowLeft, windowWidth, canvasOffset)
@@ -30,20 +31,22 @@ local function collectScrollCommands(instance, alignToTop, commands)
 	local innerDelta = Vector2.zero
 	while ancestor ~= nil do
 		if ancestor:IsA("ScrollingFrame") then
-			local position = ancestor.AbsolutePosition
-			local window = ancestor.AbsoluteWindowSize
+			-- ROBLOX DEVIATION: Left scrollbar gutters shift the native window
+			-- independently of the canvas inset; scrolling shares clipping geometry.
+			local window = Geometry.getClippingRect(ancestor)
 			local canvas = ancestor.CanvasPosition
 			local targetBounds = bounds - innerDelta
-			local top = targetBounds.Y - position.Y + canvas.Y
-			local targetY = if alignToTop then top else top + size.Y - window.Y
+			local top = targetBounds.Y - window.y + canvas.Y
+			local targetY = if alignToTop then top else top + size.Y - window.height
 			local targetX = nearestHorizontalOffset(
 				targetBounds.X,
 				size.X,
-				position.X,
-				window.X,
+				window.x,
+				window.width,
 				canvas.X
 			)
-			local maximum = ancestor.AbsoluteCanvasSize - window
+			local maximum = ancestor.AbsoluteCanvasSize
+				- Vector2.new(window.width, window.height)
 			local resolved = Vector2.new(
 				math.clamp(targetX, 0, math.max(0, maximum.X)),
 				math.clamp(targetY, 0, math.max(0, maximum.Y))

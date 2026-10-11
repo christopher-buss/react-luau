@@ -172,6 +172,7 @@ end
 
 return {
 	getClientRect = getClientRect,
+	getClippingRect = getClippingRect,
 	isVisible = isVisible,
 	getIntersection = getIntersection,
 	validateIntersectionTarget = validateTarget,

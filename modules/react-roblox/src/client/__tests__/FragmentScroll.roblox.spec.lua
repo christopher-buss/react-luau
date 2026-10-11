@@ -618,5 +618,58 @@ describeClient("FragmentRefs scrollIntoView", function()
 			fragmentRef.current:scrollIntoView()
 			expect(scrollingRef.current.CanvasPosition.X).toBe(100)
 		end)
+		-- ROBLOX DEVIATION: A left scrollbar shifts the physical clipping window
+		-- even without a canvas inset; declared canvas offsets alone miss its origin.
+		it("aligns to the clipping window beside a left scrollbar", function()
+			local fragmentRef, scrollingRef = React.createRef(), React.createRef()
+			local function Test(props)
+				return React.createElement(
+					"ScrollingFrame",
+					{
+						ref = scrollingRef,
+						Size = UDim2.fromOffset(200, 100),
+						CanvasSize = UDim2.fromOffset(1000, 1000),
+						BorderSizePixel = 0,
+						ScrollBarThickness = 20,
+						VerticalScrollBarPosition = Enum.VerticalScrollBarPosition.Left,
+						VerticalScrollBarInset = props.inset,
+						HorizontalScrollBarInset = Enum.ScrollBarInset.None,
+					},
+					React.createElement(
+						React.Fragment,
+						{ ref = fragmentRef },
+						React.createElement("Frame", {
+							Position = UDim2.fromOffset(180, 300),
+							Size = UDim2.fromOffset(20, 20),
+						})
+					)
+				)
+			end
+			ReactRoblox.act(function()
+				root:render(
+					React.createElement(Test, { inset = Enum.ScrollBarInset.None })
+				)
+			end)
+			settle()
+			fragmentRef.current:scrollIntoView()
+			expect(scrollingRef.current.CanvasPosition).toBe(Vector2.new(0, 300))
+			scrollingRef.current.CanvasPosition = Vector2.zero
+			settle()
+			fragmentRef.current:scrollIntoView(false)
+			expect(scrollingRef.current.CanvasPosition).toBe(Vector2.new(0, 240))
+			ReactRoblox.act(function()
+				root:render(
+					React.createElement(Test, { inset = Enum.ScrollBarInset.Always })
+				)
+			end)
+			scrollingRef.current.CanvasPosition = Vector2.zero
+			settle()
+			fragmentRef.current:scrollIntoView()
+			expect(scrollingRef.current.CanvasPosition).toBe(Vector2.new(20, 300))
+			scrollingRef.current.CanvasPosition = Vector2.zero
+			settle()
+			fragmentRef.current:scrollIntoView(false)
+			expect(scrollingRef.current.CanvasPosition).toBe(Vector2.new(20, 240))
+		end)
 	end)
 end)
