@@ -1170,10 +1170,7 @@ local function hasHiddenOffscreenDirectParent(finishedWork: Fiber): boolean
 		if parent.tag == HostComponent or parent.tag == HostRoot then
 			return false
 		end
-		if
-			(parent.tag == OffscreenComponent or parent.tag == LegacyHiddenComponent)
-			and parent.memoizedState ~= nil
-		then
+		if parent.tag == OffscreenComponent and parent.memoizedState ~= nil then
 			return true
 		end
 		parent = parent.return_
