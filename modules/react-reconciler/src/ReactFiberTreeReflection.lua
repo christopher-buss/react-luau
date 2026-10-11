@@ -34,6 +34,8 @@ local HostComponent = ReactWorkTags.HostComponent
 local HostRoot = ReactWorkTags.HostRoot
 local HostPortal = ReactWorkTags.HostPortal
 local HostText = ReactWorkTags.HostText
+local OffscreenComponent = ReactWorkTags.OffscreenComponent
+local Fragment = ReactWorkTags.Fragment
 local FundamentalComponent = ReactWorkTags.FundamentalComponent
 local SuspenseComponent = ReactWorkTags.SuspenseComponent
 local ReactFiberFlags = require(script.Parent.ReactFiberFlags)
@@ -378,6 +380,378 @@ exports.doesFiberContain = function(parentFiber: Fiber, childFiber: Fiber): bool
 		node = node.return_ :: Fiber
 	end
 	return false
+end
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberTreeReflection.js#L350-L772
+-- ROBLOX DEVIATION: Roblox hosts have no HostSingleton or supported HostText;
+-- Fragment traversal visits HostComponent instances and visible Offscreen subtrees.
+local function traverseVisibleInstancesAndTextInstances<A, B, C>(
+	child: Fiber?,
+	searchWithinHosts: boolean,
+	fn: (
+		Fiber,
+		A,
+		B,
+		C
+	) -> boolean,
+	a: A,
+	b: B,
+	c: C
+): boolean
+	while child ~= nil do
+		local isHostNode = child.tag == HostComponent
+		if isHostNode and fn(child, a, b, c) then
+			return true
+		elseif child.tag == OffscreenComponent and child.memoizedState ~= nil then
+			-- Skip hidden subtrees.
+		else
+			if
+				(searchWithinHosts or child.tag ~= HostComponent)
+				and traverseVisibleInstancesAndTextInstances(
+					child.child,
+					searchWithinHosts,
+					fn,
+					a,
+					b,
+					c
+				)
+			then
+				return true
+			end
+		end
+		child = child.sibling
+	end
+	return false
+end
+
+exports.traverseFragmentInstancesAndTextInstances = function<A, B, C>(
+	fragmentFiber: Fiber,
+	fn: (
+		Fiber,
+		A,
+		B,
+		C
+	) -> boolean,
+	a: A,
+	b: B,
+	c: C
+)
+	traverseVisibleInstancesAndTextInstances(fragmentFiber.child, false, fn, a, b, c)
+end
+
+exports.traverseFragmentInstancesAndTextInstancesDeeply = function<A, B, C>(
+	fragmentFiber: Fiber,
+	fn: (
+		Fiber,
+		A,
+		B,
+		C
+	) -> boolean,
+	a: A,
+	b: B,
+	c: C
+)
+	traverseVisibleInstancesAndTextInstances(fragmentFiber.child, true, fn, a, b, c)
+end
+
+local function getFragmentParentInstanceOrContainerFiber(fiber: Fiber): Fiber?
+	local parent = fiber.return_
+	while parent ~= nil do
+		if parent.tag == HostRoot or parent.tag == HostComponent then
+			return parent
+		end
+		parent = parent.return_
+	end
+	return nil
+end
+exports.getFragmentParentInstanceOrContainerFiber =
+	getFragmentParentInstanceOrContainerFiber
+
+exports.fiberIsPortaledIntoHost = function(fiber: Fiber): boolean
+	local foundPortalParent = false
+	local parent = fiber.return_
+	while parent ~= nil do
+		if parent.tag == HostPortal then
+			foundPortalParent = true
+		end
+		if parent.tag == HostRoot or parent.tag == HostComponent then
+			break
+		end
+		parent = parent.return_
+	end
+	return foundPortalParent
+end
+
+exports.getFragmentPortalContainerInfo = function(fiber: Fiber): Container?
+	local parent = fiber.return_
+	while parent ~= nil do
+		if parent.tag == HostPortal then
+			return parent.stateNode.containerInfo
+		end
+		if parent.tag == HostRoot or parent.tag == HostComponent then
+			break
+		end
+		parent = parent.return_
+	end
+	return nil
+end
+
+local function findFragmentInstanceOrTextInstanceSiblings(
+	result: { Fiber? },
+	self: Fiber,
+	child: Fiber?,
+	state: { foundSelf: boolean }
+): boolean
+	while child ~= nil do
+		if child == self then
+			state.foundSelf = true
+			child = child.sibling
+			continue
+		end
+		if child.tag == HostComponent then
+			if state.foundSelf then
+				result[2] = child
+				return true
+			else
+				result[1] = child
+			end
+		elseif child.tag == OffscreenComponent and child.memoizedState ~= nil then
+			-- Skip hidden subtrees.
+		else
+			if
+				findFragmentInstanceOrTextInstanceSiblings(
+					result,
+					self,
+					child.child,
+					state
+				)
+			then
+				return true
+			end
+		end
+		child = child.sibling
+	end
+	return false
+end
+
+-- ROBLOX DEVIATION: The upstream tuple is returned as two Luau values; the
+-- recursive scan keeps its one-based result table so nil slots stay distinct.
+exports.getFragmentInstanceOrTextInstanceSiblings = function(
+	fiber: Fiber
+): (Fiber?, Fiber?)
+	local result: { Fiber? } = {}
+	local parentHostFiber = getFragmentParentInstanceOrContainerFiber(fiber)
+	if parentHostFiber == nil then
+		return nil, nil
+	end
+	findFragmentInstanceOrTextInstanceSiblings(
+		result,
+		fiber,
+		parentHostFiber.child,
+		{ foundSelf = false }
+	)
+	return result[1], result[2]
+end
+
+exports.getInstanceFromHostFiber = function(fiber: Fiber): any
+	if fiber.tag == HostComponent then
+		return fiber.stateNode
+	elseif fiber.tag == HostRoot then
+		return fiber.stateNode.containerInfo
+	else
+		error("Expected to find a host node. This is a bug in React.")
+	end
+end
+
+local searchTarget: Fiber? = nil
+local searchBoundary: Fiber? = nil
+local function pushSearchTarget(target: Fiber?)
+	searchTarget = target
+end
+local function popSearchTarget(): Fiber?
+	return searchTarget
+end
+local function pushSearchBoundary(value: Fiber?)
+	searchBoundary = value
+end
+local function popSearchBoundary(): Fiber?
+	return searchBoundary
+end
+
+local function findNextSibling(child: Fiber): boolean
+	pushSearchTarget(child)
+	return true
+end
+
+exports.getNextSiblingInstanceOrTextInstanceFiber = function(fiber: Fiber): Fiber?
+	-- ROBLOX DEVIATION: Luau spells upstream's omitted generic callback arguments nil.
+	traverseVisibleInstancesAndTextInstances(
+		fiber.sibling,
+		false,
+		findNextSibling,
+		nil,
+		nil,
+		nil
+	)
+	local sibling = popSearchTarget()
+	pushSearchTarget(nil)
+	return sibling
+end
+
+exports.isFiberContainedByFragment = function(fiber: Fiber, fragmentFiber: Fiber): boolean
+	local current: Fiber? = fiber
+	while current ~= nil do
+		if
+			current.tag == Fragment
+			and (current == fragmentFiber or current.alternate == fragmentFiber)
+		then
+			return true
+		end
+		current = current.return_
+	end
+	return false
+end
+
+-- ROBLOX DEVIATION: The pinned upstream implementation ignores otherFiber;
+-- preserve that contract rather than silently substituting a containment check.
+exports.isFragmentContainedByFiber = function(
+	fragmentFiber: Fiber,
+	otherFiber: Fiber
+): boolean
+	local current: Fiber? = fragmentFiber
+	local fiberHostParent = getFragmentParentInstanceOrContainerFiber(fragmentFiber)
+	while current ~= nil do
+		if
+			(current.tag == HostComponent or current.tag == HostRoot)
+			and (current == fiberHostParent or current.alternate == fiberHostParent)
+		then
+			return true
+		end
+		current = current.return_
+	end
+	return false
+end
+
+local function getParentForFragmentAncestors(inst: Fiber?): Fiber?
+	if inst == nil then
+		return nil
+	end
+	repeat
+		inst = if inst == nil then nil else inst.return_
+	until inst == nil or inst.tag == HostComponent or inst.tag == HostRoot
+	return inst
+end
+
+local function getLowestCommonAncestor(
+	instA: Fiber,
+	instB: Fiber,
+	getParent: (Fiber?) -> Fiber?
+): Fiber?
+	local nodeA: Fiber? = instA
+	local nodeB: Fiber? = instB
+	local depthA = 0
+	local tempA = nodeA
+	while tempA ~= nil do
+		depthA += 1
+		tempA = getParent(tempA)
+	end
+	local depthB = 0
+	local tempB = nodeB
+	while tempB ~= nil do
+		depthB += 1
+		tempB = getParent(tempB)
+	end
+	while depthA - depthB > 0 do
+		nodeA = getParent(nodeA)
+		depthA -= 1
+	end
+	while depthB - depthA > 0 do
+		nodeB = getParent(nodeB)
+		depthB -= 1
+	end
+	local depth = depthA
+	while depth > 0 do
+		depth -= 1
+		if nodeA == nodeB or (nodeB ~= nil and nodeA == nodeB.alternate) then
+			return nodeA
+		end
+		nodeA = getParent(nodeA)
+		nodeB = getParent(nodeB)
+	end
+	return nil
+end
+exports.getLowestCommonAncestor = getLowestCommonAncestor
+
+local function isFiberPrecedingCheck(
+	child: Fiber,
+	target: Fiber,
+	boundary: Fiber
+): boolean
+	if child == boundary then
+		return true
+	end
+	if child == target then
+		pushSearchTarget(child)
+		return true
+	end
+	return false
+end
+
+exports.isFiberPreceding = function(fiber: Fiber, otherFiber: Fiber): boolean
+	local commonAncestor =
+		getLowestCommonAncestor(fiber, otherFiber, getParentForFragmentAncestors)
+	if commonAncestor == nil then
+		return false
+	end
+	traverseVisibleInstancesAndTextInstances(
+		commonAncestor,
+		true,
+		isFiberPrecedingCheck,
+		otherFiber,
+		fiber,
+		nil
+	)
+	local target = popSearchTarget()
+	pushSearchTarget(nil)
+	return target ~= nil
+end
+
+local function isFiberFollowingCheck(
+	child: Fiber,
+	target: Fiber,
+	boundary: Fiber
+): boolean
+	if child == boundary then
+		pushSearchBoundary(child)
+		return false
+	end
+	if child == target then
+		if popSearchBoundary() ~= nil then
+			pushSearchTarget(child)
+		end
+		return true
+	end
+	return false
+end
+
+exports.isFiberFollowing = function(fiber: Fiber, otherFiber: Fiber): boolean
+	local commonAncestor =
+		getLowestCommonAncestor(fiber, otherFiber, getParentForFragmentAncestors)
+	if commonAncestor == nil then
+		return false
+	end
+	traverseVisibleInstancesAndTextInstances(
+		commonAncestor,
+		true,
+		isFiberFollowingCheck,
+		otherFiber,
+		fiber,
+		nil
+	)
+	local target = popSearchTarget()
+	pushSearchTarget(nil)
+	pushSearchBoundary(nil)
+	return target ~= nil
 end
 
 return exports
