@@ -31,6 +31,8 @@ describeClient("FragmentRefs focus methods", function()
 		React = require(Packages.React)
 		ReactRoblox = require(Packages.ReactRoblox)
 		parent = Instance.new("ScreenGui")
+		-- ROBLOX DEVIATION: Test containers must survive character respawns.
+		parent.ResetOnSpawn = false
 		parent.Parent = game:GetService("Players").LocalPlayer.PlayerGui
 		root = ReactRoblox.createRoot(parent)
 	end)
@@ -530,6 +532,7 @@ describeClient("FragmentRefs focus methods", function()
 		it("skips candidates inside disabled LayerCollectors", function()
 			local fragmentRef = React.createRef()
 			local disabledGui = Instance.new("ScreenGui")
+			disabledGui.ResetOnSpawn = false
 			disabledGui.Enabled = false
 			disabledGui.Parent = parent.Parent
 			local function Test()

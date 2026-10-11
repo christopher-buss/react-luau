@@ -22,6 +22,8 @@ describeClient("FragmentRefs scrollIntoView", function()
 		React = require(Packages.React)
 		ReactRoblox = require(Packages.ReactRoblox)
 		parent = Instance.new("ScreenGui")
+		-- ROBLOX DEVIATION: Test containers must survive character respawns.
+		parent.ResetOnSpawn = false
 		parent.IgnoreGuiInset = true
 		parent.Parent = game:GetService("Players").LocalPlayer.PlayerGui
 		root = ReactRoblox.createRoot(parent)

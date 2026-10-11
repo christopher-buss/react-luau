@@ -29,6 +29,8 @@ clientDescribe("Roblox Fragment observer client geometry", function()
 		jest.useRealTimers()
 		ReactRoblox = require(Packages.ReactRoblox)
 		gui = Instance.new("ScreenGui")
+		-- ROBLOX DEVIATION: Test containers must survive character respawns.
+		gui.ResetOnSpawn = false
 		gui.IgnoreGuiInset = true
 		gui.Parent = Players.LocalPlayer.PlayerGui
 		observers = {}
