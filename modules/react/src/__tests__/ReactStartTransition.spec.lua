@@ -19,6 +19,7 @@ local useTransition
 
 local LuauPolyfill = require(Packages.LuauPolyfill)
 local Set = LuauPolyfill.Set
+local Error = LuauPolyfill.Error
 
 local JestGlobals = require(Packages.Dev.JestGlobals)
 local jestExpect = JestGlobals.expect
@@ -128,6 +129,9 @@ describe("ReactStartTransition", function()
 			end)
 		end)
 		jestExpect(hookSucceeded).toBe(false)
-		jestExpect(hookError).toBe("hook transition failure")
+		-- ROBLOX DEVIATION: ReactTestRenderer.act runs its scope through
+		-- batchedUpdates' describeError handler, which wraps string errors.
+		jestExpect(LuauPolyfill.instanceof(hookError, Error)).toBe(true)
+		jestExpect(hookError.message).toBe("hook transition failure")
 	end)
 end)

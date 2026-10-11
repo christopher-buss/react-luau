@@ -24,7 +24,6 @@ describe("Activity", function()
 		jest.useFakeTimers()
 
 		React = require(Packages.React)
-		ReactNoop = require(Packages.Dev.ReactNoopRenderer)
 		ReactRoblox = require(Packages.ReactRoblox)
 		Scheduler = require(Packages.Scheduler)
 		parent = Instance.new("Folder")
@@ -259,6 +258,12 @@ describe("Activity", function()
 	end)
 
 	it("defers hidden renders and updates behind visible work", function()
+		-- ROBLOX DEVIATION: The React 17 reconciler injects one HostConfig per
+		-- module graph; Noop scheduling requires a graph separate from Roblox.
+		jest.resetModules()
+		React = require(Packages.React)
+		Scheduler = require(Packages.Scheduler)
+		ReactNoop = require(Packages.Dev.ReactNoopRenderer)
 		local setHiddenText
 
 		local function Text(props)
@@ -297,6 +302,11 @@ describe("Activity", function()
 	end)
 
 	it("contains Suspense inside a hidden Activity", function()
+		-- ROBLOX DEVIATION: The Noop case uses its own injected renderer graph.
+		jest.resetModules()
+		React = require(Packages.React)
+		Scheduler = require(Packages.Scheduler)
+		ReactNoop = require(Packages.Dev.ReactNoopRenderer)
 		local resolved = false
 		local pings = {}
 		local wakeable = {}

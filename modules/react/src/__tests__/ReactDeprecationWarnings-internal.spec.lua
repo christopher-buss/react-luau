@@ -5,7 +5,6 @@ local ReactNoop
 local Scheduler
 -- local JSXDEVRuntime
 local Packages = script.Parent.Parent.Parent
-local ReactGlobals = require(Packages.ReactGlobals)
 local JestGlobals = require(Packages.Dev.JestGlobals)
 local jestExpect = JestGlobals.expect
 local describe = JestGlobals.describe
@@ -58,23 +57,16 @@ describe("ReactDeprecationWarnings", function()
 			return React.createElement(RefComponent, { ref = "refComponent" })
 		end
 		ReactNoop.render(React.createElement(Component))
-		local expectedName = ReactGlobals.__DEV__ and "Component"
-			or "<enable __DEV__ mode for component names>"
 		-- ROBLOX Test Noise: jest setup config makes this hide error
 		-- boundary warnings in upstream (scripts/jest/setupTests.js:72)
 		-- ROBLOX deviation: we removed string ref support ahead of upstream schedule
 		jestExpect(function()
 			return jestExpect(Scheduler).toFlushWithoutYielding()
 		end).toThrow(
-			'Component "'
-				.. expectedName
-				.. '" contains the string ref "refComponent". '
-				.. "Support for string refs has been removed. "
-				.. "We recommend using useRef() or createRef() instead. "
-				.. "Learn more about using refs safely here: "
-				.. "https://reactjs.org/link/strict-mode-string-ref"
-			-- ROBLOX deviation: since we throw instead of warn, no stack trace in the message
-			-- .. "\n    in Component (at **)"
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberBeginWork.js#L1412-L1425
+			-- ROBLOX DEVIATION: Ref-as-prop validates every invalid ref through
+			-- markRef, including unsupported string refs.
+			"Expected ref to be a function, an object returned by React.createRef(), or undefined/null."
 		)
 	end)
 	-- ROBLOX deviation: we don't allow string refs under any circumstances
@@ -109,20 +101,15 @@ describe("ReactDeprecationWarnings", function()
 		ReactNoop.render(React.createElement(Component))
 
 		-- ROBLOX deviation: we removed string ref support ahead of upstream schedule
-		local expectedName = ReactGlobals.__DEV__ and "Component"
-			or "<enable __DEV__ mode for component names>"
 		-- ROBLOX Test Noise: jest setup config makes this hide error
 		-- boundary warnings in upstream (scripts/jest/setupTests.js:72)
 		jestExpect(function()
 			return jestExpect(Scheduler).toFlushWithoutYielding()
 		end).toThrow(
-			'Component "'
-				.. expectedName
-				.. '" contains the string ref "refComponent". '
-				.. "Support for string refs has been removed. "
-				.. "We recommend using useRef() or createRef() instead. "
-				.. "Learn more about using refs safely here: "
-				.. "https://reactjs.org/link/strict-mode-string-ref"
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/ReactFiberBeginWork.js#L1412-L1425
+			-- ROBLOX DEVIATION: Ref-as-prop validates every invalid ref through
+			-- markRef, including unsupported string refs.
+			"Expected ref to be a function, an object returned by React.createRef(), or undefined/null."
 		)
 	end)
 

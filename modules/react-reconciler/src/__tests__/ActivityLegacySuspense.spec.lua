@@ -53,19 +53,22 @@ describe("Activity Suspense", function()
 
 		Scheduler.unstable_yieldValue("Suspend! [" .. text .. "]")
 		local thenable = { pings = {} }
-		function thenable:andThen(resolve)
-			local current = textCache[text]
-			if current.status == "pending" then
-				table.insert(self.pings, resolve)
-			else
-				resolve(current.value)
-			end
-		end
-		textCache[text] = {
+		local newRecord = {
 			status = "pending",
 			thenable = thenable,
 			value = thenable,
 		}
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/__tests__/ActivityLegacySuspense-test.js#L78-L98
+		-- ROBLOX DEVIATION: Declare the captured record before the Luau method;
+		-- the thenable remains valid when a later render clears its cache entry.
+		function thenable:andThen(resolve)
+			if newRecord.status == "pending" then
+				table.insert(self.pings, resolve)
+			else
+				task.defer(resolve, newRecord.value)
+			end
+		end
+		textCache[text] = newRecord
 		error(thenable)
 	end
 

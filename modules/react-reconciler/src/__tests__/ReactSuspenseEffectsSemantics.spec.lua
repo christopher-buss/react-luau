@@ -1,4 +1,9 @@
--- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/__tests__/ReactSuspenseEffectsSemantics-test.js
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-reconciler/src/__tests__/ReactSuspenseEffectsSemantics-test.js
+-- ROBLOX DEVIATION: These retained React 17 acceptance cases cover Suspense
+-- effect semantics through synchronous act and local event logs; they are not
+-- the complete upstream Scheduler/cache-resource suite.
+-- ROBLOX DEVIATION: false preserves JSX empty-child slots that nil varargs
+-- would remove; ref callbacks retain upstream useCallback identity.
 --[[*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
@@ -326,7 +331,7 @@ describe("ReactSuspenseEffectsSemantics", function()
 					React.Suspense,
 					{ fallback = React.createElement(ClassText, { text = "Fallback" }) },
 					React.createElement(ClassText, { text = "Inside:Before" }),
-					props.children,
+					props.children or false,
 					React.createElement(ClassText, { text = "Inside:After" })
 				)
 			end
@@ -435,8 +440,8 @@ describe("ReactSuspenseEffectsSemantics", function()
 				end)
 				jestExpect(events).toEqual({
 					"Text:Fallback destroy layout",
-					"Text:Outer create layout",
 					"Text:Inner create layout",
+					"Text:Outer create layout",
 				})
 			end
 		)
@@ -511,8 +516,8 @@ describe("ReactSuspenseEffectsSemantics", function()
 				end)
 				jestExpect(events).toEqual({
 					"Text:Fallback destroy layout",
-					"Text:Outer create layout",
 					"Text:MemoizedInner create layout",
+					"Text:Outer create layout",
 				})
 			end
 		)
@@ -1611,10 +1616,10 @@ describe("ReactSuspenseEffectsSemantics", function()
 					end
 				end, {})
 				return React.createElement("span", {
-					ref = function(value)
+					ref = React.useCallback(function(value)
 						currentRef = value
 						table.insert(events, "ref? " .. tostring(value ~= nil))
-					end,
+					end, {}),
 				})
 			end
 			local function AsyncText()
@@ -1625,7 +1630,7 @@ describe("ReactSuspenseEffectsSemantics", function()
 				return React.createElement(
 					React.Suspense,
 					{ fallback = React.createElement("span") },
-					props.children,
+					props.children or false,
 					React.createElement(RefChecker)
 				)
 			end
@@ -1667,10 +1672,10 @@ describe("ReactSuspenseEffectsSemantics", function()
 					end
 				end, {})
 				return React.createElement("span", {
-					ref = function(value)
+					ref = React.useCallback(function(value)
 						currentRef = value
 						table.insert(events, "ref? " .. tostring(value ~= nil))
-					end,
+					end, {}),
 				})
 			end
 
@@ -1683,7 +1688,7 @@ describe("ReactSuspenseEffectsSemantics", function()
 				return React.createElement(
 					React.Suspense,
 					{ fallback = React.createElement("span") },
-					props.children,
+					props.children or false,
 					React.createElement(RefChecker)
 				)
 			end
@@ -1736,10 +1741,10 @@ describe("ReactSuspenseEffectsSemantics", function()
 					end
 				end, {})
 				return React.createElement(ClassComponent, {
-					ref = function(value)
+					ref = React.useCallback(function(value)
 						currentRef = value
 						table.insert(events, "ref? " .. tostring(value ~= nil))
-					end,
+					end, {}),
 				})
 			end
 			local function AsyncText()
@@ -1750,7 +1755,7 @@ describe("ReactSuspenseEffectsSemantics", function()
 				return React.createElement(
 					React.Suspense,
 					{ fallback = React.createElement("span") },
-					props.children,
+					props.children or false,
 					React.createElement(RefChecker)
 				)
 			end
