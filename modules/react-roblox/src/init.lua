@@ -11,4 +11,12 @@
 
 local HostTypes = require(script.client["ReactRobloxHostTypes.roblox"])
 export type RootType = HostTypes.RootType
+local FragmentTypes = require(script.client.ReactRobloxFragmentInstance)
+export type FragmentInstance = FragmentTypes.FragmentInstance
+export type FragmentFocusOptions = FragmentTypes.FocusOptions
+export type FragmentClientRect = FragmentTypes.ClientRect
+export type FragmentTreePosition = FragmentTypes.TreePosition
+export type FragmentCancellationSignal = FragmentTypes.CancellationSignal
+export type FragmentEventOptions = FragmentTypes.EventOptions
+export type FragmentObserver = FragmentTypes.Observer
 return require(script.client.ReactRoblox)

@@ -327,5 +327,10 @@ end
 
 exports.robloxReactProfiling = ReactReconciler.robloxReactProfiling
 exports.schedulingProfiler = ReactReconciler.schedulingProfiler
+exports.getFragmentInstances =
+	require(script.Parent.ReactRobloxFragmentInstance).getFragmentInstances
+local RobloxFragmentObservers = require(script.Parent.RobloxFragmentObservers)
+exports.createResizeObserver = RobloxFragmentObservers.createResizeObserver
+exports.createIntersectionObserver = RobloxFragmentObservers.createIntersectionObserver
 
 return exports

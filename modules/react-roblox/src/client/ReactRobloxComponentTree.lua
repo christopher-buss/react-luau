@@ -70,6 +70,12 @@ exports.precacheFiberNode = function(
 	instanceToFiber[node] = hostInst
 end
 
+-- ROBLOX DEVIATION: Instance properties cannot carry private Fiber keys.
+-- Exact ownership excludes ancestry guesses for Fragment relationship queries.
+exports.getFiberFromInstance = function(node: Instance): Fiber?
+	return instanceToFiber[node] or containerToRoot[node]
+end
+
 exports.uncacheFiberNode = function(
 	node: HostInstance | SuspenseInstance | ReactScopeInstance
 )

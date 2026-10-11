@@ -225,6 +225,15 @@ local function recursivelyUncacheFiberNode(node: HostInstance)
 end
 
 local exports: { [any]: any } = {}
+local ReactRobloxFragmentInstance = require(script.Parent.ReactRobloxFragmentInstance)
+exports.createFragmentInstance = ReactRobloxFragmentInstance.createFragmentInstance
+exports.updateFragmentInstanceFiber =
+	ReactRobloxFragmentInstance.updateFragmentInstanceFiber
+exports.commitNewChildToFragmentInstance =
+	ReactRobloxFragmentInstance.commitNewChildToFragmentInstance
+exports.deleteChildFromFragmentInstance =
+	ReactRobloxFragmentInstance.deleteChildFromFragmentInstance
+exports.destroyFragmentInstance = ReactRobloxFragmentInstance.destroyFragmentInstance
 Object.assign(exports, require(Packages.Shared).ReactFiberHostConfig.WithNoPersistence)
 
 exports.getRootHostContext = function(rootContainerInstance: Container): HostContext
