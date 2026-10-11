@@ -1161,68 +1161,108 @@ function commitLayoutEffectsForHostComponent(finishedWork: Fiber)
 	end
 end
 
-local function hideOrUnhideAllChildren(finishedWork, isHidden)
-	-- ROBLOX upstream: https://github.com/facebook/react/blob/c0357aecab57835e1519589ac994fd33a7deb1af/packages/react-reconciler/src/ReactFiberCommitWork.new.js#L1118-L1182
-	local hostSubtreeRoot: Fiber? = nil
+-- ROBLOX upstream: https://github.com/facebook/react/blob/52684925368a41a0c9fbfca9016cdcbb72fc9d1e/packages/react-reconciler/src/ReactFiberCommitWork.js#L1186-L1287
+-- ROBLOX DEVIATION: React-Luau has no HostHoistable or dehydrated host instances.
+-- Existing host callbacks replace the modern commitShowHide wrappers.
+local hideOrUnhideAllChildrenOnFiber
+local hideOrUnhideNearestPortals
+local hideOrUnhideNearestPortalsOnFiber
 
-	if supportsMutation then
-		-- We only have the top Fiber that was inserted but we need to recurse down its
-		-- children to find all the terminal nodes.
-		local node: Fiber = finishedWork
-		while true do
-			if node.tag == HostComponent then
-				if hostSubtreeRoot == nil then
-					hostSubtreeRoot = node
-					local instance = node.stateNode
-					if isHidden then
-						hideInstance(instance)
-					else
-						unhideInstance(node.stateNode, node.memoizedProps)
-					end
-				end
-			elseif node.tag == HostText then
-				if hostSubtreeRoot == nil then
-					local instance = node.stateNode
-					if isHidden then
-						hideTextInstance(instance)
-					else
-						unhideTextInstance(instance, node.memoizedProps)
-					end
-				end
-			elseif
-				(node.tag == OffscreenComponent or node.tag == LegacyHiddenComponent)
-				and (node.memoizedState :: OffscreenState) ~= nil
-				and node ~= finishedWork
-			then
-			-- Found a nested Offscreen component that is hidden. Don't search
-			-- any deeper. This tree should remain hidden.
-			elseif node.child ~= nil then
-				-- ROBLOX FIXME: type casts to silence analyze, Luau doesn't understand nil check
-				(node.child :: Fiber).return_ = node
-				node = node.child :: Fiber
-				continue
-			end
-			if node == finishedWork then
-				return
-			end
-			while node.sibling == nil do
-				if node.return_ == nil or node.return_ == finishedWork then
-					return
-				end
-				if hostSubtreeRoot == node then
-					hostSubtreeRoot = nil
-				end
-				node = node.return_ :: Fiber -- ROBLOX TODO: Luau narrowing doesn't understand this loop until nil pattern
-			end
-			if hostSubtreeRoot == node then
-				hostSubtreeRoot = nil
-			end
-			-- ROBLOX FIXME: cast to any to silence analyze
-			(node.sibling :: Fiber).return_ = node.return_
-			-- ROBLOX FIXME: recast to silence analyze while Luau doesn't understand nil check
-			node = node.sibling :: Fiber
+local function hideOrUnhideAllChildren(parentFiber: Fiber, isHidden: boolean)
+	if not supportsMutation then
+		return
+	end
+	local child = parentFiber.child
+	while child ~= nil do
+		hideOrUnhideAllChildrenOnFiber(child, isHidden)
+		child = child.sibling
+	end
+end
+
+hideOrUnhideAllChildrenOnFiber = function(fiber: Fiber, isHidden: boolean)
+	if not supportsMutation then
+		return
+	end
+	if fiber.tag == HostComponent then
+		if isHidden then
+			hideInstance(fiber.stateNode)
+		else
+			unhideInstance(fiber.stateNode, fiber.memoizedProps)
+		end
+		hideOrUnhideNearestPortals(fiber, isHidden)
+		return
+	elseif fiber.tag == HostText then
+		if isHidden then
+			hideTextInstance(fiber.stateNode)
+		else
+			unhideTextInstance(fiber.stateNode, fiber.memoizedProps)
+		end
+		return
+	elseif fiber.tag == OffscreenComponent then
+		if fiber.memoizedState == nil then
+			hideOrUnhideAllChildren(fiber, isHidden)
+		end
+		return
+	else
+		hideOrUnhideAllChildren(fiber, isHidden)
+		return
+	end
+end
+
+hideOrUnhideNearestPortals = function(parentFiber: Fiber, isHidden: boolean)
+	if not supportsMutation then
+		return
+	end
+	if bit32.band(parentFiber.subtreeFlags, ReactFiberFlags.PortalStatic) ~= 0 then
+		local child = parentFiber.child
+		while child ~= nil do
+			hideOrUnhideNearestPortalsOnFiber(child, isHidden)
+			child = child.sibling
 		end
 	end
+end
+
+hideOrUnhideNearestPortalsOnFiber = function(fiber: Fiber, isHidden: boolean)
+	if not supportsMutation then
+		return
+	end
+	if fiber.tag == HostPortal then
+		hideOrUnhideAllChildrenOnFiber(fiber, isHidden)
+		return
+	elseif fiber.tag == OffscreenComponent then
+		if fiber.memoizedState == nil then
+			hideOrUnhideNearestPortals(fiber, isHidden)
+		end
+		return
+	else
+		hideOrUnhideNearestPortals(fiber, isHidden)
+		return
+	end
+end
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/1d68bce19c9409ed70604d1d16b70b68ce71dc4a/packages/react-reconciler/src/ReactFiberCommitWork.js#L295-L297
+-- ROBLOX DEVIATION: React-Luau's mutation traversal has no direct-parent
+-- visibility context, so read it from the ancestor fibers.
+-- ROBLOX upstream: https://github.com/facebook/react/blob/52684925368a41a0c9fbfca9016cdcbb72fc9d1e/packages/react-reconciler/src/ReactFiberCommitWork.js#L2357-L2382
+-- ROBLOX DEVIATION: Crossing a portal restores the entire hidden-ancestor
+-- context, including ancestors outside the portal's host component parent.
+local function hasHiddenOffscreenDirectParent(finishedWork: Fiber): boolean
+	local crossedPortal = false
+	local parent = finishedWork.return_
+	while parent ~= nil do
+		if parent.tag == HostPortal then
+			crossedPortal = true
+		elseif
+			parent.tag == HostRoot or (parent.tag == HostComponent and not crossedPortal)
+		then
+			return false
+		end
+		if parent.tag == OffscreenComponent and parent.memoizedState ~= nil then
+			return true
+		end
+		parent = parent.return_
+	end
+	return false
 end
 
 function commitAttachRef(finishedWork: Fiber)
@@ -1777,6 +1817,16 @@ function insertOrAppendPlacementNodeIntoContainer(
 		else
 			appendChildToContainer(parent, stateNode)
 		end
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCompleteWork.js#L1926-L1932
+		-- ROBLOX DEVIATION: React 17 can commit hidden visibility before wrapper
+		-- placement; Roblox detachment requires an attached parent to hide.
+		if hasHiddenOffscreenDirectParent(node) then
+			if tag == HostText then
+				hideTextInstance(stateNode)
+			else
+				hideInstance(stateNode)
+			end
+		end
 	elseif tag == HostPortal then
 	-- If the insertion itself is a portal, then we don't want to traverse
 	-- down its children. Instead, we'll get insertions from each child in
@@ -1804,6 +1854,16 @@ function insertOrAppendPlacementNode(node: Fiber, before: Instance?, parent: Ins
 			insertBefore(parent, stateNode, before)
 		else
 			appendChild(parent, stateNode)
+		end
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCompleteWork.js#L1926-L1932
+		-- ROBLOX DEVIATION: React 17 can commit hidden visibility before wrapper
+		-- placement; Roblox detachment requires an attached parent to hide.
+		if hasHiddenOffscreenDirectParent(node) then
+			if tag == HostText then
+				hideTextInstance(stateNode)
+			else
+				hideInstance(stateNode)
+			end
 		end
 	elseif tag == HostPortal then
 	-- If the insertion itself is a portal, then we don't want to traverse
@@ -2259,7 +2319,9 @@ local function commitWork(current: Fiber | nil, finishedWork: Fiber)
 			end
 		end
 
-		hideOrUnhideAllChildren(finishedWork, isHidden)
+		if isHidden or not hasHiddenOffscreenDirectParent(finishedWork) then
+			hideOrUnhideAllChildren(finishedWork, isHidden)
+		end
 		if finishedWork.elementType == REACT_ACTIVITY_TYPE then
 			-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCommitWork.js#L2514-L2516
 			-- ROBLOX DEVIATION: Activity uses the existing Suspense retry cache
