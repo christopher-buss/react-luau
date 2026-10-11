@@ -290,11 +290,25 @@ function FragmentInstance:unobserveUsing(observer)
 		return
 	end
 	self._observers[observer] = nil
+	-- ROBLOX DEVIATION: A foreign target cleanup must not prevent releasing
+	-- the remaining targets and owner after observation bookkeeping is removed.
+	local firstError = nil
 	for instance in targets do
-		observer:unobserve(instance, self)
+		local ok, cleanupError =
+			xpcall(observer.unobserve, describeError, observer, instance, self)
+		if not ok and firstError == nil then
+			firstError = cleanupError
+		end
 	end
 	if observer.releaseOwner ~= nil then
-		observer:releaseOwner(self)
+		local ok, cleanupError =
+			xpcall(observer.releaseOwner, describeError, observer, self)
+		if not ok and firstError == nil then
+			firstError = cleanupError
+		end
+	end
+	if firstError ~= nil then
+		error(firstError, 0)
 	end
 end
 -- ROBLOX upstream: https://github.com/facebook/react/blob/1d34f91dfde6bba84d08b683aaba164c7194dacb/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js#L3852-L3968

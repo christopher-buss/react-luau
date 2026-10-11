@@ -128,6 +128,42 @@ describe("Fragment native event ownership", function()
 		expect(ReactRoblox.getFragmentInstances(firstHost)).toEqual({})
 		expect(ReactRoblox.getFragmentInstances(secondHost)).toEqual({})
 	end)
+	it("finishes manual observer removal when a target cleanup throws", function()
+		ReactRoblox.act(function()
+			root:render(
+				React.createElement(
+					React.Fragment,
+					{ ref = fragmentRef },
+					React.createElement("Frame", { ref = firstRef }),
+					React.createElement("Frame", { ref = secondRef })
+				)
+			)
+		end)
+		local observed = {}
+		local firstRemoval = true
+		local ownerReleased = false
+		local observer = {}
+		function observer:observe(target)
+			observed[target] = true
+		end
+		function observer:unobserve(target)
+			observed[target] = nil
+			if firstRemoval then
+				firstRemoval = false
+				error("manual target cleanup failed")
+			end
+		end
+		function observer:releaseOwner(_owner)
+			ownerReleased = true
+		end
+		fragmentRef.current:observeUsing(observer)
+		expect(function()
+			fragmentRef.current:unobserveUsing(observer)
+		end).toThrow("manual target cleanup failed")
+		expect(observed).toEqual({})
+		expect(ownerReleased).toBe(true)
+		expect(#parent:GetChildren()).toBe(2)
+	end)
 	it("permits re-registration after the cancellation boundary throws", function()
 		local logs = {}
 		local function listener(host, value)
