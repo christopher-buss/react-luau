@@ -99,14 +99,18 @@ local console = require(Packages.Shared).console
 
 local ReactInternalTypes = require(script.Parent.ReactInternalTypes)
 type Fiber = ReactInternalTypes.Fiber
+type FiberRoot = ReactInternalTypes.FiberRoot
 type Lane = ReactInternalTypes.Lane
 type Lanes = ReactInternalTypes.Lanes
 
 local ReactFiberLane = require(script.Parent.ReactFiberLane)
+local intersectLanes = ReactFiberLane.intersectLanes
 local NoLane = ReactFiberLane.NoLane
 local NoLanes = ReactFiberLane.NoLanes
 local isSubsetOfLanes = ReactFiberLane.isSubsetOfLanes
 local mergeLanes = ReactFiberLane.mergeLanes
+local isTransitionLane = ReactFiberLane.isTransitionLane
+local markRootEntangled = ReactFiberLane.markRootEntangled
 
 -- ROBLOX deviation: lazy instantiate to avoid circular require
 local ReactFiberNewContext --= require(script.Parent["ReactFiberNewContext.new"])
@@ -206,6 +210,8 @@ local function initializeUpdateQueue<State>(fiber: Fiber): ()
 		lastBaseUpdate = nil,
 		shared = {
 			pending = nil,
+			lanes = NoLanes,
+			hiddenEffects = nil,
 		},
 		effects = nil,
 	}
@@ -308,6 +314,23 @@ local function enqueueUpdate<State>(fiber: Fiber, update: Update<State>)
 	end
 end
 exports.enqueueUpdate = enqueueUpdate
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/34aa5cfe0d9b6ec4667e02bf46ab34d83dfb2d6d/packages/react-reconciler/src/ReactUpdateQueue.new.js#L566-L594
+local function entangleTransitions(root: FiberRoot, fiber: Fiber, lane: Lane): ()
+	local updateQueue = fiber.updateQueue
+	if updateQueue == nil then
+		return
+	end
+
+	local sharedQueue: SharedQueue<any> = (updateQueue :: any).shared
+	if isTransitionLane(lane) then
+		local queueLanes = intersectLanes(sharedQueue.lanes, root.pendingLanes)
+		local newQueueLanes = mergeLanes(queueLanes, lane)
+		sharedQueue.lanes = newQueueLanes
+		markRootEntangled(root, newQueueLanes)
+	end
+end
+exports.entangleTransitions = entangleTransitions
 
 local function enqueueCapturedUpdate<State>(workInProgress: Fiber, capturedUpdate: Update<State>)
 	-- Captured updates are updates that are thrown by a child during the render
@@ -737,5 +760,44 @@ local function commitUpdateQueue<State>(
 	end
 end
 exports.commitUpdateQueue = commitUpdateQueue
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/5e4e2dae0ba1836d26fa4e5edb4475d3b3e0a60c/packages/react-reconciler/src/ReactFiberClassUpdateQueue.new.js#L682-L739
+-- ROBLOX DEVIATION: This reconciler stores callbacks on pooled Update objects,
+-- so hidden updates retain those objects instead of copying callback functions.
+local function deferHiddenCallbacks<State>(updateQueue: UpdateQueue<State>): ()
+	local effects = updateQueue.effects
+	if effects == nil then
+		return
+	end
+
+	updateQueue.effects = nil
+	local hiddenEffects = updateQueue.shared.hiddenEffects
+	if hiddenEffects == nil then
+		updateQueue.shared.hiddenEffects = effects
+	else
+		for _, effect in effects do
+			table.insert(hiddenEffects, effect)
+		end
+	end
+end
+exports.deferHiddenCallbacks = deferHiddenCallbacks
+
+local function commitHiddenCallbacks<State>(
+	finishedWork: Fiber,
+	finishedQueue: UpdateQueue<State>,
+	instance: any
+): ()
+	local hiddenEffects = finishedQueue.shared.hiddenEffects
+	if hiddenEffects == nil then
+		return
+	end
+
+	finishedQueue.shared.hiddenEffects = nil
+	local visibleEffects = finishedQueue.effects
+	finishedQueue.effects = hiddenEffects
+	commitUpdateQueue(finishedWork, finishedQueue, instance)
+	finishedQueue.effects = visibleEffects
+end
+exports.commitHiddenCallbacks = commitHiddenCallbacks
 
 return exports

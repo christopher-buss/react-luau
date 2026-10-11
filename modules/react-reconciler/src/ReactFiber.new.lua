@@ -115,6 +115,7 @@ local REACT_LAZY_TYPE = ReactSymbols.REACT_LAZY_TYPE
 -- local REACT_SCOPE_TYPE = ReactSymbols.REACT_SCOPE_TYPE
 local REACT_OFFSCREEN_TYPE = ReactSymbols.REACT_OFFSCREEN_TYPE
 local REACT_LEGACY_HIDDEN_TYPE = ReactSymbols.REACT_LEGACY_HIDDEN_TYPE
+local REACT_ACTIVITY_TYPE = ReactSymbols.REACT_ACTIVITY_TYPE
 
 -- deviation: We probably don't have to worry about this scenario, since we use
 -- simple tables as maps
@@ -135,7 +136,7 @@ local REACT_LEGACY_HIDDEN_TYPE = ReactSymbols.REACT_LEGACY_HIDDEN_TYPE
 -- 	end
 -- end
 
-local createFiberFromScope, createFiberFromProfiler, createFiberFromFragment, createFiberFromFundamental, createFiberFromSuspense, createFiberFromOffscreen, createFiberFromLegacyHidden, createFiberFromSuspenseList
+local createFiberFromScope, createFiberFromProfiler, createFiberFromFragment, createFiberFromFundamental, createFiberFromSuspense, createFiberFromOffscreen, createFiberFromActivity, createFiberFromLegacyHidden, createFiberFromSuspenseList
 
 local debugCounter = 1
 
@@ -545,6 +546,8 @@ local function createFiberFromTypeAndProps(
 			-- 	return createFiberFromSuspenseList(pendingProps, mode, lanes, key)
 		elseif type_ == REACT_OFFSCREEN_TYPE then
 			return createFiberFromOffscreen(pendingProps, mode, lanes, key)
+		elseif type_ == REACT_ACTIVITY_TYPE then
+			return createFiberFromActivity(pendingProps, mode, lanes, key)
 		elseif type_ == REACT_LEGACY_HIDDEN_TYPE then
 			return createFiberFromLegacyHidden(pendingProps, mode, lanes, key)
 			-- elseif type_ == REACT_SCOPE_TYPE then
@@ -870,6 +873,28 @@ function createFiberFromOffscreen(
 	return fiber
 end
 
+function createFiberFromActivity(
+	pendingProps: OffscreenProps,
+	mode: TypeOfMode,
+	lanes: Lanes,
+	key: string?
+): Fiber
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiber.js#L834-L843
+	-- ROBLOX DEVIATION: This client-only port compiles Activity directly
+	-- to the existing Offscreen Fiber. Upstream's extra Activity wrapper owns
+	-- dehydrated-boundary behavior, which ReactRoblox does not support.
+	return createFiber(
+		OffscreenComponent,
+		pendingProps,
+		key,
+		mode,
+		REACT_ACTIVITY_TYPE,
+		if __DEV__ then REACT_ACTIVITY_TYPE else nil,
+		nil,
+		lanes
+	)
+end
+
 function createFiberFromLegacyHidden(
 	pendingProps: OffscreenProps,
 	mode: TypeOfMode,
@@ -1013,6 +1038,7 @@ return {
 	createFiberFromSuspense = createFiberFromSuspense,
 	createFiberFromSuspenseList = createFiberFromSuspenseList,
 	createFiberFromOffscreen = createFiberFromOffscreen,
+	createFiberFromActivity = createFiberFromActivity,
 	createFiberFromLegacyHidden = createFiberFromLegacyHidden,
 	createFiberFromText = createFiberFromText,
 	createFiberFromHostInstanceForDeletion = createFiberFromHostInstanceForDeletion,

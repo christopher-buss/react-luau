@@ -909,6 +909,35 @@ describe("ReactLazy", function()
 				.. "Lazy element type must resolve to a class or function."
 		)
 	end)
+	it("throws with a useful error when wrapping Activity with lazy()", function()
+		local BadLazy = lazy(function()
+			return fakeImport(React.Activity)
+		end)
+		local root = ReactTestRenderer.create(
+			React.createElement(Suspense, {
+				fallback = React.createElement(Text, {
+					text = "Loading...",
+				}),
+			}, React.createElement(BadLazy)),
+			{ unstable_isConcurrent = true }
+		)
+
+		jestExpect(Scheduler).toFlushAndYield({
+			"Loading...",
+		})
+
+		Promise.delay(0):await()
+
+		root.update(React.createElement(Suspense, {
+			fallback = React.createElement(Text, {
+				text = "Loading...",
+			}),
+		}, React.createElement(BadLazy)))
+		jestExpect(Scheduler).toFlushAndThrow(
+			"Element type is invalid. Received a promise that resolves to: Activity. "
+				.. "Lazy element type must resolve to a class or function."
+		)
+	end)
 	it("throws with a useful error when wrapping lazy() multiple times", function()
 		local Lazy1 = lazy(function()
 			return fakeImport(Text)
