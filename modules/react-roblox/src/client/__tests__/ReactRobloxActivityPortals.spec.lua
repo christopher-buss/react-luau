@@ -81,10 +81,7 @@ describe("ReactDOMActivity", function()
 		end
 	)
 
-	-- ROBLOX DEVIATION: React 17's nested initial hidden prerender does not
-	-- schedule the portal child's visibility commit. The initial assertion
-	-- receives one attached child, before the reveal under test can run.
-	it.skip(
+	it(
 		"revealing an Activity boundary inside a portal does not reveal the portal contents if has a hidden Activity parent",
 		function()
 			local portalContainer = Instance.new("Folder")
@@ -135,4 +132,27 @@ describe("ReactDOMActivity", function()
 			jestExpect(#portalContainer:GetChildren()).toBe(0)
 		end
 	)
+	it("reveals an Activity inside LegacyHidden without hiding its content", function()
+		local root = ReactRoblox.createRoot(container)
+		local function App(props)
+			return React.createElement(
+				React.unstable_LegacyHidden,
+				{ mode = "unstable-defer-without-hiding" },
+				React.createElement(
+					Activity,
+					{ mode = props.mode },
+					React.createElement("TextLabel", { Text = "Content" })
+				)
+			)
+		end
+		act(function()
+			root:render(React.createElement(App, { mode = "hidden" }))
+		end)
+		jestExpect(#container:GetChildren()).toBe(0)
+		act(function()
+			root:render(React.createElement(App, { mode = "visible" }))
+		end)
+		jestExpect(#container:GetChildren()).toBe(1)
+		jestExpect(container:GetChildren()[1].Text).toBe("Content")
+	end)
 end)

@@ -1160,7 +1160,7 @@ hideOrUnhideAllChildrenOnFiber = function(fiber: Fiber, isHidden: boolean)
 			unhideTextInstance(fiber.stateNode, fiber.memoizedProps)
 		end
 		return
-	elseif fiber.tag == OffscreenComponent or fiber.tag == LegacyHiddenComponent then
+	elseif fiber.tag == OffscreenComponent then
 		if fiber.memoizedState == nil then
 			hideOrUnhideAllChildren(fiber, isHidden)
 		end
@@ -1219,10 +1219,7 @@ local function hasHiddenOffscreenDirectParent(finishedWork: Fiber): boolean
 		then
 			return false
 		end
-		if
-			(parent.tag == OffscreenComponent or parent.tag == LegacyHiddenComponent)
-			and parent.memoizedState ~= nil
-		then
+		if parent.tag == OffscreenComponent and parent.memoizedState ~= nil then
 			return true
 		end
 		parent = parent.return_
@@ -1743,6 +1740,12 @@ function insertOrAppendPlacementNodeIntoContainer(
 		else
 			appendChildToContainer(parent, stateNode)
 		end
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCompleteWork.js#L1926-L1932
+		-- ROBLOX DEVIATION: React 17 can commit hidden visibility before wrapper
+		-- placement; Roblox detachment requires an attached parent to hide.
+		if hasHiddenOffscreenDirectParent(node) then
+			hideInstance(stateNode)
+		end
 	elseif tag == HostPortal then
 	-- If the insertion itself is a portal, then we don't want to traverse
 	-- down its children. Instead, we'll get insertions from each child in
@@ -1770,6 +1773,12 @@ function insertOrAppendPlacementNode(node: Fiber, before: Instance?, parent: Ins
 			insertBefore(parent, stateNode, before)
 		else
 			appendChild(parent, stateNode)
+		end
+		-- ROBLOX upstream: https://github.com/facebook/react/blob/ae74234eae6ebd62f19190731278e20bc1c37d51/packages/react-reconciler/src/ReactFiberCompleteWork.js#L1926-L1932
+		-- ROBLOX DEVIATION: React 17 can commit hidden visibility before wrapper
+		-- placement; Roblox detachment requires an attached parent to hide.
+		if hasHiddenOffscreenDirectParent(node) then
+			hideInstance(stateNode)
 		end
 	elseif tag == HostPortal then
 	-- If the insertion itself is a portal, then we don't want to traverse
