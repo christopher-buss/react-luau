@@ -2228,3 +2228,135 @@ describe("ReactSuspense", function()
 	--     end)
 	-- end)
 end)
+
+-- ROBLOX upstream: https://github.com/facebook/react/blob/c0d218f0f3e02ed581f74096e56baa947213135d/packages/react-reconciler/src/__tests__/ReactSuspenseWithNoopRenderer-test.js#L3995-L4073
+-- ROBLOX DEVIATION: ReactNoop.act and Scheduler yield matchers replace upstream
+-- async act, Scheduler.log and assertLog while preserving complete logs and output.
+-- ROBLOX DEVIATION: The legacy-cache gate is unnecessary for explicit thenables.
+JestGlobals.describe("Synchronous suspense retry", function()
+	local React, ReactNoop, Scheduler
+	local textCache
+	local function resolveText(text)
+		local record = textCache[text]
+		if record == nil then
+			textCache[text] = { status = "resolved", value = text }
+		elseif record.status == "pending" then
+			local thenable = record.value
+			record.status = "resolved"
+			record.value = text
+			for _, ping in ipairs(thenable.pings) do
+				ping()
+			end
+		end
+	end
+	local function readText(text)
+		local record = textCache[text]
+		if record ~= nil then
+			if record.status == "pending" then
+				Scheduler.unstable_yieldValue("Suspend! [" .. text .. "]")
+				error(record.value)
+			elseif record.status == "rejected" then
+				error(record.value)
+			else
+				return record.value
+			end
+		end
+		Scheduler.unstable_yieldValue("Suspend! [" .. text .. "]")
+		local newRecord
+		local thenable = { pings = {} }
+		-- ROBLOX DEVIATION: colon andThen replaces then; task.defer replaces microtask.
+		function thenable:andThen(resolve)
+			if newRecord.status == "pending" then
+				table.insert(self.pings, resolve)
+			else
+				task.defer(resolve, newRecord.value)
+			end
+		end
+		newRecord = { status = "pending", value = thenable }
+		textCache[text] = newRecord
+		error(thenable)
+	end
+	local function Text(props)
+		Scheduler.unstable_yieldValue(props.text)
+		return props.text
+	end
+	local function AsyncText(props)
+		readText(props.text)
+		Scheduler.unstable_yieldValue(props.text)
+		return props.text
+	end
+	JestGlobals.beforeEach(function()
+		JestGlobals.jest.resetModules()
+		React = require(Packages.React)
+		ReactNoop = require(Packages.Dev.ReactNoopRenderer)
+		Scheduler = require(Packages.Scheduler)
+		textCache = {}
+	end)
+	-- ROBLOX upstream: https://github.com/facebook/react/blob/c0d218f0f3e02ed581f74096e56baa947213135d/packages/react-reconciler/src/__tests__/ReactSuspenseWithNoopRenderer-test.js#L3995-L4073
+	JestGlobals.it(
+		"regression test: pinging synchronously within the render phase does not unwind the stack",
+		function()
+			local thenable = { status = "pending" }
+			function thenable:andThen(resolve)
+				resolve("B")
+			end
+			local function ImmediatelyPings()
+				if thenable.status == "pending" then
+					thenable.status = "fulfilled"
+					error(thenable)
+				end
+				return React.createElement(Text, { text = "B" })
+			end
+			local function App(props)
+				return React.createElement(
+					"div",
+					nil,
+					React.createElement(
+						React.Suspense,
+						{
+							fallback = React.createElement(
+								Text,
+								{ text = "Loading A..." }
+							),
+						},
+						if props.showMore
+							then React.createElement(
+								React.Fragment,
+								nil,
+								React.createElement(AsyncText, { text = "A" })
+							)
+							else nil
+					),
+					if props.showMore
+						then React.createElement(React.Suspense, {
+							fallback = React.createElement(
+								Text,
+								{ text = "Loading B..." }
+							),
+						}, React.createElement(ImmediatelyPings))
+						else nil
+				)
+			end
+			local root = ReactNoop.createRoot()
+			ReactNoop.act(function()
+				root.render(React.createElement(App, { showMore = false }))
+			end)
+			JestGlobals.expect(Scheduler).toHaveYielded({})
+			JestGlobals.expect(root).toMatchRenderedOutput(React.createElement("div"))
+			ReactNoop.act(function()
+				React.startTransition(function()
+					root.render(React.createElement(App, { showMore = true }))
+				end)
+			end)
+			JestGlobals.expect(Scheduler).toHaveYielded({
+				"Suspend! [A]",
+				"Loading A...",
+				"Loading B...",
+				"Suspend! [A]",
+				"Loading A...",
+				"B",
+			})
+			JestGlobals.expect(root).toMatchRenderedOutput(React.createElement("div"))
+		end
+	)
+end)

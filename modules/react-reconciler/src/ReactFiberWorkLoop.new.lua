@@ -3269,8 +3269,20 @@ exports.pingSuspendedRoot = function(
 				and includesOnlyRetries(workInProgressRootRenderLanes)
 				and now() - globalMostRecentFallbackTime < FALLBACK_THROTTLE_MS
 		then
-			-- Restart from the root.
-			mod.prepareFreshStack(root, ReactFiberLane.NoLanes)
+			-- ROBLOX upstream: https://github.com/facebook/react/blob/5fcf1a4b4c2150a1b9fe0de0144a82a053c63966/packages/react-reconciler/src/ReactFiberWorkLoop.js#L3404-L3417
+			-- Force a restart from the root by unwinding the stack. Unless this is
+			-- being called from the render phase, because that would cause a crash.
+			if bit32.band(executionContext, RenderContext) == NoContext then
+				mod.prepareFreshStack(root, ReactFiberLane.NoLanes)
+			else
+				-- ROBLOX DEVIATION: React 17 has no selective-hydration interruption
+				-- exception; preserve the ping without importing replay machinery.
+				-- ROBLOX upstream: https://github.com/facebook/react/blob/c0d218f0f3e02ed581f74096e56baa947213135d/packages/react-reconciler/src/ReactFiberWorkLoop.js#L5044-L5052
+				-- In the meantime, record the pinged lanes so markRootSuspended won't
+				-- mark them as suspended, allowing a retry.
+				workInProgressRootPingedLanes =
+					mergeLanes(workInProgressRootPingedLanes, pingedLanes)
+			end
 		else
 			-- Even though we can't restart right now, we might get an
 			-- opportunity later. So we mark this render as having a ping.
